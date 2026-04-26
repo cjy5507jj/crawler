@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta, timezone
+
 from src.services.aggregate import (
     MarketStats,
     _Snapshot,
     _trimmed_mean,
     compute_stats,
+    compute_trend,
 )
 
 
@@ -156,3 +159,73 @@ def test_new_price_floor_passes_normal_value() -> None:
     )
     assert stats.new_price == 50_000
     assert stats.used_to_new_ratio == round(45_000 / 50_000, 4)
+
+
+# ---------------------------------------------------------------------------
+# Trend computation (P3.11)
+# ---------------------------------------------------------------------------
+
+
+_NOW = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _hist_row(days_ago: float, used_median: int | None) -> dict:
+    captured = _NOW - timedelta(days=days_ago)
+    return {
+        "captured_at": captured.isoformat(),
+        "used_median": used_median,
+    }
+
+
+def test_compute_trend_no_history() -> None:
+    out = compute_trend([], window_days=7, now=_NOW)
+    assert out == {"trend_pct": None, "direction": None}
+
+
+def test_compute_trend_no_baseline_in_window() -> None:
+    # Only recent rows; nothing near (now - 7d).
+    rows = [_hist_row(0, 100_000), _hist_row(1, 99_500)]
+    out = compute_trend(rows, window_days=7, now=_NOW)
+    assert out == {"trend_pct": None, "direction": None}
+
+
+def test_compute_trend_up_5pct() -> None:
+    rows = [_hist_row(0, 105_000), _hist_row(7, 100_000)]
+    out = compute_trend(rows, window_days=7, now=_NOW)
+    assert out == {"trend_pct": 5.0, "direction": "up"}
+
+
+def test_compute_trend_down_10pct() -> None:
+    rows = [_hist_row(0, 90_000), _hist_row(7, 100_000)]
+    out = compute_trend(rows, window_days=7, now=_NOW)
+    assert out == {"trend_pct": -10.0, "direction": "down"}
+
+
+def test_compute_trend_flat_within_threshold() -> None:
+    rows = [_hist_row(0, 101_000), _hist_row(7, 100_000)]
+    out = compute_trend(rows, window_days=7, now=_NOW)
+    assert out["trend_pct"] == 1.0
+    assert out["direction"] == "flat"
+
+
+def test_compute_trend_zero_baseline_returns_none() -> None:
+    rows = [_hist_row(0, 50_000), _hist_row(7, 0)]
+    out = compute_trend(rows, window_days=7, now=_NOW)
+    assert out == {"trend_pct": None, "direction": None}
+
+
+def test_compute_trend_zero_current_returns_none() -> None:
+    rows = [_hist_row(0, 0), _hist_row(7, 100_000)]
+    out = compute_trend(rows, window_days=7, now=_NOW)
+    assert out == {"trend_pct": None, "direction": None}
+
+
+def test_compute_trend_28d_window() -> None:
+    # 28d window: pick the row near 28 days ago, ignore 7-day-old rows.
+    rows = [
+        _hist_row(0, 120_000),
+        _hist_row(7, 110_000),
+        _hist_row(28, 100_000),
+    ]
+    out = compute_trend(rows, window_days=28, now=_NOW)
+    assert out == {"trend_pct": 20.0, "direction": "up"}

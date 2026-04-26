@@ -1,0 +1,203 @@
+[
+  {
+    "id": "gpu_asus_vs_msi_5070",
+    "category": "gpu",
+    "listing_title": "ASUS TUF RTX 5070 12GB OC 정품 박스",
+    "candidates": [
+      {"name": "ASUS RTX 5070 TUF Gaming OC 12GB", "expected_match": true},
+      {"name": "MSI RTX 5070 VENTUS 3X OC 12GB", "expected_match": false},
+      {"name": "ASUS RTX 5080 TUF 16GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_msi_ventus_vs_gaming_trio_5070",
+    "category": "gpu",
+    "listing_title": "MSI RTX 5070 VENTUS 3X OC 12GB 미개봉",
+    "candidates": [
+      {"name": "MSI 지포스 RTX 5070 VENTUS 3X OC D7 12GB", "expected_match": true},
+      {"name": "MSI 지포스 RTX 5070 게이밍 트리오 OC D7 12GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_chip_5070_vs_5080",
+    "category": "gpu",
+    "listing_title": "GIGABYTE 지포스 RTX 5070 EAGLE 12GB 택포",
+    "candidates": [
+      {"name": "GIGABYTE 지포스 RTX 5070 EAGLE OC D7 12GB", "expected_match": true},
+      {"name": "GIGABYTE 지포스 RTX 5080 EAGLE 16GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_gigabyte_aorus_vs_eagle_4070",
+    "category": "gpu",
+    "listing_title": "GIGABYTE AORUS RTX 4070 SUPER 마스터 12GB",
+    "candidates": [
+      {"name": "GIGABYTE AORUS 지포스 RTX 4070 SUPER MASTER 12GB", "expected_match": true},
+      {"name": "GIGABYTE 지포스 RTX 4070 SUPER EAGLE OC 12GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_amd_rx7800xt_sapphire_nitro",
+    "category": "gpu",
+    "listing_title": "사파이어 RX 7800 XT NITRO+ 16GB 풀박스",
+    "candidates": [
+      {"name": "SAPPHIRE 라데온 RX 7800 XT NITRO+ OC D6 16GB", "expected_match": true},
+      {"name": "POWERCOLOR 라데온 RX 7800 XT HELLHOUND 16GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_amd_5600x_kr",
+    "category": "cpu",
+    "listing_title": "AMD 라이젠5 5600X 정품 팝니다",
+    "candidates": [
+      {"name": "AMD 라이젠5-5세대 5600X (버미어) (정품)", "expected_match": true},
+      {"name": "AMD 라이젠5-5세대 5500 (세잔)", "expected_match": false},
+      {"name": "AMD 라이젠5-7세대 7600X (라파엘)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_amd_7800x3d",
+    "category": "cpu",
+    "listing_title": "라이젠 7800X3D 정품 미개봉",
+    "candidates": [
+      {"name": "AMD 라이젠7-7세대 7800X3D (라파엘)", "expected_match": true},
+      {"name": "AMD 라이젠9-7세대 7950X3D (라파엘)", "expected_match": false},
+      {"name": "AMD 라이젠7-5세대 5800X3D (버미어)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_intel_14700k",
+    "category": "cpu",
+    "listing_title": "인텔 i7-14700K 박스 미개봉",
+    "candidates": [
+      {"name": "인텔 코어i7-14세대 14700K (랩터레이크 리프레시)", "expected_match": true},
+      {"name": "인텔 코어i7-14세대 14700KF (랩터레이크 리프레시)", "expected_match": false},
+      {"name": "인텔 코어i9-14세대 14900K", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_intel_13600k_vs_14600k",
+    "category": "cpu",
+    "listing_title": "인텔 i5-13600K 정품",
+    "candidates": [
+      {"name": "인텔 코어i5-13세대 13600K (랩터레이크)", "expected_match": true},
+      {"name": "인텔 코어i5-14세대 14600K (랩터레이크 리프레시)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_amd_9700x",
+    "category": "cpu",
+    "listing_title": "AMD 라이젠7 9700X 정품박스 미개봉",
+    "candidates": [
+      {"name": "AMD 라이젠7-9세대 9700X (그래니트 릿지)", "expected_match": true},
+      {"name": "AMD 라이젠9-9세대 9950X (그래니트 릿지)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_ddr5_6000_32gb_kit",
+    "category": "ram",
+    "listing_title": "G.SKILL DDR5-6000 CL30 32GB (16GB x 2) 팝니다",
+    "candidates": [
+      {"name": "G.SKILL DDR5-6000 CL30 트라이던트 Z5 NEO RGB 32GB(16Gx2)", "expected_match": true},
+      {"name": "G.SKILL DDR5-6000 CL30 트라이던트 Z5 NEO RGB 64GB(32Gx2)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_ddr4_vs_ddr5",
+    "category": "ram",
+    "listing_title": "삼성 DDR5 32GB 5600 정품",
+    "candidates": [
+      {"name": "삼성전자 DDR5-5600 32GB (정품)", "expected_match": true},
+      {"name": "삼성전자 DDR4-3200 32GB (정품)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_corsair_ddr5_capacity_mismatch",
+    "category": "ram",
+    "listing_title": "CORSAIR DDR5-6000 32GB Vengeance",
+    "candidates": [
+      {"name": "CORSAIR DDR5-6000 CL30 Vengeance 32GB(16Gx2)", "expected_match": true},
+      {"name": "CORSAIR DDR5-6000 CL30 Vengeance 64GB(32Gx2)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_kingston_fury_16gb",
+    "category": "ram",
+    "listing_title": "킹스톤 FURY DDR4-3200 16GB 새제품",
+    "candidates": [
+      {"name": "킹스톤 FURY DDR4-3200 CL16 16GB", "expected_match": true},
+      {"name": "킹스톤 FURY DDR4-3200 CL16 32GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_samsung_990pro_1tb",
+    "category": "ssd",
+    "listing_title": "삼성 990 PRO 1TB M.2 NVMe 미개봉",
+    "candidates": [
+      {"name": "삼성전자 990 PRO M.2 NVMe 1TB", "expected_match": true},
+      {"name": "삼성전자 990 PRO M.2 NVMe 2TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_wd_sn850x_2tb",
+    "category": "ssd",
+    "listing_title": "WD BLACK SN850X 2TB NVMe 미개봉",
+    "candidates": [
+      {"name": "Western Digital WD BLACK SN850X M.2 NVMe 2TB", "expected_match": true},
+      {"name": "Western Digital WD BLACK SN850X M.2 NVMe 1TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_micron_crucial_t705_4tb",
+    "category": "ssd",
+    "listing_title": "마이크론 크루셜 T705 4TB NVMe Gen5",
+    "candidates": [
+      {"name": "Crucial T705 M.2 NVMe PCIe 5.0 4TB 마이크론", "expected_match": true},
+      {"name": "Crucial T705 M.2 NVMe PCIe 5.0 2TB 마이크론", "expected_match": false}
+    ]
+  },
+  {
+    "id": "mainboard_b650m_asrock",
+    "category": "mainboard",
+    "listing_title": "ASRock B650M PG Lightning 메인보드 새상품",
+    "candidates": [
+      {"name": "ASRock B650M PG Lightning WiFi (에즈윈)", "expected_match": true},
+      {"name": "ASRock B650 Steel Legend WiFi (에즈윈)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "mainboard_x670e_asus_rog",
+    "category": "mainboard",
+    "listing_title": "ASUS ROG STRIX X670E-E GAMING WIFI 미개봉",
+    "candidates": [
+      {"name": "ASUS ROG STRIX X670E-E GAMING WIFI (대원CTS)", "expected_match": true},
+      {"name": "ASUS PRIME X670E-PRO WIFI (STCOM)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "accessory_sata_cable_vs_real_ssd",
+    "category": "ssd",
+    "listing_title": "SATA 케이블 50cm 새것 직거래",
+    "candidates": [
+      {"name": "삼성전자 990 PRO M.2 NVMe 1TB", "expected_match": false},
+      {"name": "Western Digital WD BLACK SN850X M.2 NVMe 2TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "exclusion_full_pc_bundle",
+    "category": "gpu",
+    "listing_title": "게이밍PC 본체 RTX 4070 + 13600K 풀세트 일괄",
+    "candidates": [
+      {"name": "ASUS RTX 4070 DUAL OC 12GB", "expected_match": false},
+      {"name": "MSI RTX 4070 VENTUS 3X 12GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "exclusion_buy_request",
+    "category": "gpu",
+    "listing_title": "RTX 4070 삽니다 직거래 가능",
+    "candidates": [
+      {"name": "ASUS RTX 4070 DUAL OC 12GB", "expected_match": false}
+    ]
+  }
+]
