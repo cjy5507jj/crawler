@@ -29,6 +29,7 @@ Thumbs.db
 # OMC runtime state (transient — plans/research are kept)
 .omc/state/
 .omc/logs/
+.omc/sessions/
 .omc/notepad.md
 .omc/project-memory.json
 
