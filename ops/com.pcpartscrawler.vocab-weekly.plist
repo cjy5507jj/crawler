@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pcpartscrawler.vocab-weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/joejaeyoung/2026/pc-parts-crawler/.venv/bin/python</string>
+    <string>scripts/discover_vocab.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/joejaeyoung/2026/pc-parts-crawler</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+    <key>CRAWL_TRIGGER_SOURCE</key>
+    <string>launchd</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/joejaeyoung/Library/Logs/pc-parts-crawler/vocab-weekly.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/joejaeyoung/Library/Logs/pc-parts-crawler/vocab-weekly.err</string>
+</dict>
+</plist>
