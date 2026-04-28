@@ -36,6 +36,7 @@ def _build_product_payload(category: str, raw: RawProduct) -> dict:
         "source_id": raw.source_id,
         "name": raw.name,
         "brand": norm.brand,
+        "chipset": norm.chipset,
         "model_name": norm.model_name or None,
         "normalized_name": norm.normalized_name or None,
         "url": raw.url,
@@ -216,7 +217,7 @@ def run_used(
             continue
 
         # If brand is detectable, restrict the candidate pool — large speed win
-        listing_brand = detect_brand(listing.title)
+        listing_brand = detect_brand(listing.title, category)
         pool = (
             [c for c in candidates if not c.brand or not listing_brand or c.brand == listing_brand]
             or candidates

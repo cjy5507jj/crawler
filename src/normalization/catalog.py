@@ -76,9 +76,22 @@ BRAND_ALIASES: dict[str, tuple[str, ...]] = {
     "jcheyon": ("제이씨현",),
     "daewoocts": ("대원씨티에스", "대원"),
     "stcom": ("stcom",),
-    # Chip vendors last
-    "amd": ("amd", "라이젠", "ryzen", "에이엠디"),
-    "intel": ("intel", "인텔", "코어 울트라", "core ultra", "i3-", "i5-", "i7-", "i9-"),
+    # Chip vendors last — kept in BRAND_ALIASES so CPU/RAM matching can still
+    # use them as brand. GPU-specific suppression is enforced in detect_brand
+    # via the `category` argument (see also CHIPSET_ALIASES below).
+    "amd":    ("amd", "라이젠", "ryzen", "에이엠디"),
+    "intel":  ("intel", "인텔", "코어 울트라", "core ultra", "i3-", "i5-", "i7-", "i9-"),
+    "nvidia": ("nvidia", "엔비디아", "geforce", "rtx", "gtx", "지포스"),
+}
+
+
+# Chip vendors are extracted independently and stored in `products.chipset`
+# so GPU listings can keep both signals (brand=AIB, chipset=chip vendor).
+# Aliases include AMD's GPU brand "라데온"/"radeon" so detect_chipset works
+# on listings that don't say "AMD" explicitly.
+CHIPSET_ALIASES: dict[str, tuple[str, ...]] = {
+    "amd":    ("amd", "라이젠", "ryzen", "에이엠디", "라데온", "radeon"),
+    "intel":  ("intel", "인텔", "코어 울트라", "core ultra", "i3-", "i5-", "i7-", "i9-", "arc a", "arc b"),
     "nvidia": ("nvidia", "엔비디아", "geforce", "rtx", "gtx", "지포스"),
 }
 
@@ -287,6 +300,7 @@ class NormalizedProduct:
     model_name: str
     normalized_name: str
     tokens: list[str]
+    chipset: str | None = None
     category_tokens: list[str] = field(default_factory=list)
     sku_line_tokens: list[str] = field(default_factory=list)
     capacity_tokens: list[str] = field(default_factory=list)
@@ -303,14 +317,40 @@ def normalize_text(value: str) -> str:
     return text
 
 
-def detect_brand(name: str) -> str | None:
+def detect_brand(name: str, category: str | None = None) -> str | None:
+    """Detect the AIB / OEM / importer brand from a product name.
+
+    For GPU listings (`category="gpu"`), chip vendors (`nvidia`/`amd`/
+    `intel`) are NOT treated as brands — they belong in the `chipset`
+    column. For other categories the chip vendor remains a valid brand
+    (CPU listings legitimately have brand=`amd`/`intel`).
+    """
     lowered = normalize_text(name)
     # Vocab module gives DB-loaded entries (auto-discovered + seeded) when
     # available; falls back to BRAND_ALIASES otherwise. Iteration order
     # preserves seeded order: OEMs first, importers last, chip vendors last.
     from src.normalization import vocab
 
+    skip_chipsets = category == "gpu"
+    chipset_canons = set(CHIPSET_ALIASES.keys()) if skip_chipsets else frozenset()
     for canonical, aliases in vocab.brand_aliases():
+        if canonical in chipset_canons:
+            continue
+        if any(alias in lowered for alias in aliases):
+            return canonical
+    return None
+
+
+def detect_chipset(name: str) -> str | None:
+    """Extract chip vendor (nvidia / amd / intel) from a product name.
+
+    Stored in `products.chipset` independently of `brand` so GPU listings
+    keep both signals: brand=ASUS, chipset=nvidia.
+    """
+    lowered = normalize_text(name)
+    from src.normalization import vocab
+
+    for canonical, aliases in vocab.chipset_aliases():
         if any(alias in lowered for alias in aliases):
             return canonical
     return None
@@ -469,7 +509,8 @@ def extract_capacity_tokens(category: str, name: str) -> list[str]:
 
 
 def normalize_product_name(category: str, name: str) -> NormalizedProduct:
-    brand = detect_brand(name)
+    brand = detect_brand(name, category)
+    chipset = detect_chipset(name) if category in ("gpu", "cpu") else None
     tokens = tokenize_model(name)
     category_tokens = extract_category_tokens(category, name)
     sku_line_tokens = extract_sku_line_tokens(category, name)
@@ -480,6 +521,7 @@ def normalize_product_name(category: str, name: str) -> NormalizedProduct:
         category=category,
         original_name=name,
         brand=brand,
+        chipset=chipset,
         model_name=model_name,
         normalized_name=normalized_name,
         tokens=tokens,

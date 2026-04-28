@@ -106,9 +106,24 @@ def refresh() -> None:
 
 
 def brand_aliases() -> list[tuple[str, tuple[str, ...]]]:
+    """Return all brand aliases including chip vendors.
+
+    GPU-specific suppression of chip vendors happens in `detect_brand`
+    (see `catalog.CHIPSET_ALIASES`). Non-GPU categories still want chip
+    vendors as a valid brand match (CPU brand=amd/intel).
+    """
     _ensure_loaded()
     assert _brands_cache is not None
     return _brands_cache
+
+
+def chipset_aliases() -> list[tuple[str, tuple[str, ...]]]:
+    """Return chip vendor aliases (nvidia / amd / intel).
+
+    Always uses the hardcoded `CHIPSET_ALIASES` constant — DB rows omit
+    the GPU-specific aliases like `라데온` that chipset extraction needs.
+    """
+    return list(_catalog.CHIPSET_ALIASES.items())
 
 
 def sku_line_aliases(category: str) -> list[tuple[str, tuple[str, ...]]]:

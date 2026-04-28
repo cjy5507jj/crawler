@@ -1,5 +1,6 @@
 from src.normalization.catalog import (
     detect_brand,
+    detect_chipset,
     extract_category_tokens,
     is_accessory_product,
     is_excluded_listing,
@@ -9,9 +10,50 @@ from src.normalization.catalog import (
 
 
 def test_detect_brand_korean_alias() -> None:
+    # CPU brand legitimately resolves to chip vendor (intel / amd) — chip
+    # vendor suppression only applies to GPU listings.
     assert detect_brand("AMD 라이젠5 5600X CPU") == "amd"
     assert detect_brand("인텔 코어 울트라7 270K") == "intel"
     assert detect_brand("ASUS ROG Strix RTX 4070") == "asus"
+
+
+def test_detect_brand_gpu_skips_chip_vendors() -> None:
+    # GPU category: chip vendor must NOT collapse into brand — that was the
+    # 763-row "nvidia" bug. AIB partner is preserved when present.
+    assert detect_brand("ASUS ROG Strix RTX 4070", category="gpu") == "asus"
+    assert detect_brand("MSI 지포스 RTX 5070 ventus", category="gpu") == "msi"
+    assert detect_brand("기가바이트 라데온 RX 7800 XT", category="gpu") == "gigabyte"
+    # Listings without an AIB token must surface as brand=None instead of
+    # "nvidia"/"amd".
+    assert detect_brand("지포스 RTX 4070 신품", category="gpu") is None
+    assert detect_brand("라데온 RX 7800 XT", category="gpu") is None
+
+
+def test_detect_chipset_extracts_chip_vendor() -> None:
+    assert detect_chipset("ASUS ROG Strix RTX 4070") == "nvidia"
+    assert detect_chipset("MSI 지포스 RTX 5070 ventus") == "nvidia"
+    assert detect_chipset("기가바이트 라데온 RX 7800 XT") == "amd"
+    assert detect_chipset("AMD 라이젠5 5600X") == "amd"
+    assert detect_chipset("인텔 코어 울트라7 270K") == "intel"
+    assert detect_chipset("그냥 잡다한 부품") is None
+
+
+def test_normalize_gpu_separates_brand_and_chipset() -> None:
+    # Card 1 + Crawler-A: an AIB GPU listing must record brand=AIB and
+    # chipset=chip vendor in two distinct fields.
+    norm = normalize_product_name("gpu", "ASUS ROG Strix GeForce RTX 4070 OC")
+    assert norm.brand == "asus"
+    assert norm.chipset == "nvidia"
+
+    norm = normalize_product_name("gpu", "ZOTAC GAMING 지포스 RTX 5070 트윈 엣지")
+    assert norm.brand == "zotac"
+    assert norm.chipset == "nvidia"
+
+    # Listing without AIB token on a GPU: brand=None (chip-vendor bleed
+    # blocked), chipset still captured.
+    norm = normalize_product_name("gpu", "지포스 RTX 4070 신품 미개봉")
+    assert norm.brand is None
+    assert norm.chipset == "nvidia"
 
 
 def test_detect_brand_returns_none_when_unknown() -> None:
@@ -73,7 +115,10 @@ def test_keeps_single_component_listings() -> None:
 
 def test_normalize_product_name_full() -> None:
     norm = normalize_product_name("cpu", "AMD 라이젠5-5세대 5600X (정품)")
+    # CPU keeps brand=amd (chip vendor IS the brand for CPUs); chipset
+    # mirrors brand for the dedicated chipset column.
     assert norm.brand == "amd"
+    assert norm.chipset == "amd"
     assert "5600x" in norm.tokens
     assert "5600x" in norm.category_tokens
 
