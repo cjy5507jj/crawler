@@ -44,13 +44,19 @@ def derive_queries(
     """Return up to `limit` distinct queries derived from products in `category`.
 
     Strategy:
-    1. Read distinct `model_name` values from products in the category.
-    2. Filter for queries useful in third-party search (`_good_query`).
-    3. Order by frequency (most-listed model first).
+      1. Read `brand` + `model_name` for every product in the category.
+      2. Plain `model_name` is always a candidate (frequency-counted across
+         brands so a popular model bubbles up first).
+      3. When `brand` is present and `model_name` does not already start with
+         it, also emit a `"<brand> <model>"` combined query — search-style
+         sources (joonggonara/bunjang/daangn) match better with brand context,
+         which is critical for sparse categories like monitor/cpu.
+      4. Filter both shapes through `_good_query` and the length cap.
+      5. Order by frequency, most-listed first.
     """
     rows = (
         db.table("products")
-        .select("model_name")
+        .select("brand,model_name")
         .eq("category", category)
         .execute()
         .data
@@ -58,7 +64,18 @@ def derive_queries(
     counter: Counter[str] = Counter()
     for r in rows:
         mn = (r.get("model_name") or "").strip()
-        if _good_query(mn):
-            counter[mn] += 1
+        if not _good_query(mn):
+            continue
+        counter[mn] += 1
+
+        brand = (r.get("brand") or "").strip()
+        if not brand:
+            continue
+        if mn.lower().startswith(brand.lower()):
+            continue
+        combined = f"{brand} {mn}"
+        if len(combined) > _TOO_LONG:
+            continue
+        counter[combined] += 1
 
     return [name for name, _ in counter.most_common(limit)]
