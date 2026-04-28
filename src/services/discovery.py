@@ -243,30 +243,22 @@ def discover_brands_from_products(
         elif bucket["category"] != cat:
             bucket["category"] = None  # cross-category
 
-    wrote = 0
+    # Pull all existing brands once instead of N selects — N can hit the
+    # supabase HTTP/2 stream limit and trigger ConnectionTerminated.
+    existing_rows = _read_all(
+        db.table("brands").select("id,canonical,doc_freq,aliases,source")
+    )
+    existing_by_canon: dict[str, dict] = {r["canonical"]: r for r in existing_rows}
+
+    new_payloads: list[dict] = []
+    update_payloads: list[dict] = []
     for entry in candidates.values():
-        existing = (
-            db.table("brands")
-            .select("id,doc_freq,aliases")
-            .eq("canonical", entry["canonical"])
-            .limit(1)
-            .execute()
-            .data
-        )
-        if existing:
-            old = existing[0]
-            merged_aliases = list({*old["aliases"], *entry["aliases"]})
-            db.table("brands").update(
+        canon = entry["canonical"]
+        old = existing_by_canon.get(canon)
+        if old is None:
+            new_payloads.append(
                 {
-                    "doc_freq": entry["doc_freq"],
-                    "aliases": merged_aliases,
-                    "updated_at": "now()",
-                }
-            ).eq("id", old["id"]).execute()
-        else:
-            db.table("brands").insert(
-                {
-                    "canonical": entry["canonical"],
+                    "canonical": canon,
                     "display": entry["display"],
                     "aliases": entry["aliases"],
                     "category": entry["category"],
@@ -274,9 +266,37 @@ def discover_brands_from_products(
                     "source": "freq_analysis",
                     "doc_freq": entry["doc_freq"],
                 }
-            ).execute()
-        wrote += 1
-    print(f"  [discovery] brands: {wrote} written from product first-tokens")
+            )
+        elif old.get("source") in ("seed", "manual_review"):
+            # Don't downgrade authoritative entries.
+            continue
+        else:
+            merged = list({*(old.get("aliases") or []), *entry["aliases"]})
+            update_payloads.append(
+                {
+                    "id": old["id"],
+                    "doc_freq": entry["doc_freq"],
+                    "aliases": merged,
+                }
+            )
+
+    chunk = 500
+    for i in range(0, len(new_payloads), chunk):
+        db.table("brands").insert(new_payloads[i : i + chunk]).execute()
+    for upd in update_payloads:
+        db.table("brands").update(
+            {
+                "doc_freq": upd["doc_freq"],
+                "aliases": upd["aliases"],
+                "updated_at": "now()",
+            }
+        ).eq("id", upd["id"]).execute()
+
+    wrote = len(new_payloads) + len(update_payloads)
+    print(
+        f"  [discovery] brands: {len(new_payloads)} inserted, "
+        f"{len(update_payloads)} updated"
+    )
     return {"discovered": len(candidates), "wrote": wrote}
 
 
@@ -327,10 +347,19 @@ def discover_sku_lines_from_products(
                 c[g] += 1
         cat_grams[cat] = c
 
+    # Pull all existing sku_lines once. N selects per (cat, gram) burns through
+    # the supabase HTTP/2 stream window and trips ConnectionTerminated.
+    existing_rows = _read_all(
+        db.table("sku_lines").select("id,canonical,category")
+    )
+    existing_keys: dict[tuple[str, str], int] = {
+        (r["canonical"], r["category"]): r["id"] for r in existing_rows
+    }
+
     summary: dict[str, int] = {}
-    total_wrote = 0
+    new_payloads: list[dict] = []
+    update_payloads: list[dict] = []
     for cat, this_counts in cat_grams.items():
-        cat_size = len(by_cat[cat])
         wrote = 0
         for gram, cnt in this_counts.items():
             if cnt < min_doc_freq:
@@ -349,25 +378,9 @@ def discover_sku_lines_from_products(
             if any(ch.isdigit() for ch in gram):
                 continue
             confidence = 1.0 - others_max_share
-            existing = (
-                db.table("sku_lines")
-                .select("id,doc_freq")
-                .eq("canonical", gram)
-                .eq("category", cat)
-                .limit(1)
-                .execute()
-                .data
-            )
-            if existing:
-                db.table("sku_lines").update(
-                    {
-                        "doc_freq": cnt,
-                        "confidence": confidence,
-                        "updated_at": "now()",
-                    }
-                ).eq("id", existing[0]["id"]).execute()
-            else:
-                db.table("sku_lines").insert(
+            existing_id = existing_keys.get((gram, cat))
+            if existing_id is None:
+                new_payloads.append(
                     {
                         "canonical": gram,
                         "category": cat,
@@ -375,11 +388,35 @@ def discover_sku_lines_from_products(
                         "doc_freq": cnt,
                         "confidence": confidence,
                     }
-                ).execute()
+                )
+            else:
+                update_payloads.append(
+                    {
+                        "id": existing_id,
+                        "doc_freq": cnt,
+                        "confidence": confidence,
+                    }
+                )
             wrote += 1
         summary[cat] = wrote
-        total_wrote += wrote
-    print(f"  [discovery] sku_lines: {total_wrote} entries across {len(summary)} categories")
+
+    chunk = 500
+    for i in range(0, len(new_payloads), chunk):
+        db.table("sku_lines").insert(new_payloads[i : i + chunk]).execute()
+    for upd in update_payloads:
+        db.table("sku_lines").update(
+            {
+                "doc_freq": upd["doc_freq"],
+                "confidence": upd["confidence"],
+                "updated_at": "now()",
+            }
+        ).eq("id", upd["id"]).execute()
+
+    total_wrote = len(new_payloads) + len(update_payloads)
+    print(
+        f"  [discovery] sku_lines: {len(new_payloads)} inserted, "
+        f"{len(update_payloads)} updated across {len(summary)} categories"
+    )
     return {"categories": summary, "total": total_wrote}
 
 

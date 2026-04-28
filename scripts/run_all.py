@@ -40,6 +40,11 @@ from src.services.discovery import (
 from src.services.ingest import run_danawa, run_used
 from src.services.queries import derive_queries
 from src.services.run_log import finish_run, start_run
+from src.services.watchlist import (
+    check_watchlists,
+    format_message,
+    mark_alerted,
+)
 
 
 _QUASARZONE_COOKIE = os.environ.get("QUASARZONE_PHPSESSID") or None
@@ -160,6 +165,11 @@ def main() -> None:
         default=30,
         help="Aggregation window for product_market_stats (default: 30)",
     )
+    parser.add_argument(
+        "--skip-watchlist",
+        action="store_true",
+        help="Skip the post-aggregate watchlist alert dispatch",
+    )
     args = parser.parse_args()
 
     categories = [c.strip().lower() for c in args.categories.split(",") if c.strip()]
@@ -263,6 +273,19 @@ def main() -> None:
         anomalies = detect_anomalies(prev_summary, summary)
         for a in anomalies:
             notify(f"[pc-parts-crawler] {a}", level="alert")
+
+        if not args.skip_watchlist:
+            try:
+                triggers = check_watchlists(db)
+                for t in triggers:
+                    notify(format_message(t), level="alert")
+                    mark_alerted(db, t.watchlist_id)
+                summary["phases"]["watchlist"] = {
+                    "alerts": len(triggers),
+                }
+            except Exception:
+                traceback.print_exc()
+                summary["phases"]["watchlist"] = {"failed": True}
 
         finish_run(db, run_id, status="completed", summary=summary)
     except Exception as e:
