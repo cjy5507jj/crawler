@@ -115,3 +115,30 @@ def test_naver_shop_normalize_can_be_disabled() -> None:
         client_id="x", client_secret="y", prepend_used_keyword=False
     )
     assert adapter._normalize_query("RTX 4070") == "RTX 4070"
+
+
+def test_naver_shop_expand_variants_default_is_three() -> None:
+    adapter = NaverShopAdapter(client_id="x", client_secret="y")
+    variants = adapter._expand_variants("중고 RTX 4070")
+    # Default variants: ("", "판매", "직거래") → 3 distinct queries.
+    assert variants == ["중고 RTX 4070", "중고 RTX 4070 판매", "중고 RTX 4070 직거래"]
+
+
+def test_naver_shop_expand_variants_dedups() -> None:
+    # Repeating "" twice should still yield only the bare query once.
+    adapter = NaverShopAdapter(
+        client_id="x", client_secret="y", query_variants=("", "", "판매")
+    )
+    variants = adapter._expand_variants("중고 RAM")
+    assert variants == ["중고 RAM", "중고 RAM 판매"]
+
+
+def test_naver_shop_expand_variants_empty_disables() -> None:
+    # Explicit empty tuple → only the bare base query.
+    adapter = NaverShopAdapter(client_id="x", client_secret="y", query_variants=())
+    assert adapter._expand_variants("중고 SSD") == ["중고 SSD"]
+
+
+def test_naver_shop_expand_variants_handles_empty_base() -> None:
+    adapter = NaverShopAdapter(client_id="x", client_secret="y")
+    assert adapter._expand_variants("") == []

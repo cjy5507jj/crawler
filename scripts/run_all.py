@@ -93,6 +93,7 @@ def _run_used_for_category(
     category: str,
     *,
     used_pages: int,
+    bunjang_pages: int,
     queries_per_search: int,
     skip_sources: Iterable[str],
 ) -> None:
@@ -114,13 +115,16 @@ def _run_used_for_category(
         return
     print(f"  [{category}] queries: {queries}")
 
+    # Per-source page depth: bunjang has the deepest organic PC-parts inventory
+    # so we let the operator pull more pages there without scaling other sources.
     for name, cls in _SEARCH_SOURCES.items():
         if name in skip_sources:
             continue
+        pages = bunjang_pages if name == "bunjang" else used_pages
         _safe(
             f"{name}/{category}",
-            lambda c=cls, n=name: run_used(
-                db, c(), category=category, queries=queries, pages=used_pages
+            lambda c=cls, n=name, p=pages: run_used(
+                db, c(), category=category, queries=queries, pages=p
             ),
         )
 
@@ -150,6 +154,13 @@ def main() -> None:
         type=int,
         default=1,
         help="Pages per board source (default: 1)",
+    )
+    parser.add_argument(
+        "--bunjang-pages",
+        type=int,
+        default=3,
+        help="Pages per query for bunjang (default: 3 — bunjang has the deepest "
+             "PC-parts inventory among search sources, so we pull more pages there)",
     )
     parser.add_argument(
         "--queries-per-search",
@@ -193,6 +204,8 @@ def main() -> None:
         "skip_danawa": args.skip_danawa,
         "skip_sources": sorted(skip_sources),
         "queries_per_search": args.queries_per_search,
+        "used_pages": args.used_pages,
+        "bunjang_pages": args.bunjang_pages,
         "window_days": args.window_days,
     }
     run_id = start_run(db, trigger_source=trigger_source, args=run_args)
@@ -236,6 +249,7 @@ def main() -> None:
                 db,
                 category,
                 used_pages=args.used_pages,
+                bunjang_pages=args.bunjang_pages,
                 queries_per_search=args.queries_per_search,
                 skip_sources=skip_sources,
             )

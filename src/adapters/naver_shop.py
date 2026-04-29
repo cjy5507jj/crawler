@@ -45,6 +45,12 @@ _DEFAULT_ACCEPT_TYPES = frozenset({"2"})  # 중고 only
 _TAG_RE = re.compile(r"<[^>]+>")
 _USED_KEYWORDS = ("중고",)
 
+# Suffix variants tilt response toward P2P (productType=2) listings instead of
+# new-baseline products. PoC on 2026-04-29 showed bare "중고 RTX 4070" returned
+# only 5/30 (16%) productType=2; the goal of this list is 30%+ via suffix mix.
+# Empty string keeps the bare prefixed query.
+_DEFAULT_QUERY_VARIANTS: tuple[str, ...] = ("", "판매", "직거래")
+
 
 def _strip_tags(text: str) -> str:
     return _TAG_RE.sub("", text or "").strip()
@@ -148,6 +154,7 @@ class NaverShopAdapter(SourceAdapter):
         sleep_seconds: float = 0.2,
         page_size: int = 100,
         prepend_used_keyword: bool = True,
+        query_variants: tuple[str, ...] | None = None,
     ):
         self._client_id = client_id or os.environ.get("NAVER_CLIENT_ID")
         self._client_secret = client_secret or os.environ.get("NAVER_CLIENT_SECRET")
@@ -158,6 +165,12 @@ class NaverShopAdapter(SourceAdapter):
         # API max display=100, max start=1000 → up to 1000 results per query
         self.page_size = max(1, min(int(page_size), 100))
         self.prepend_used_keyword = prepend_used_keyword
+        # Empty tuple disables variants (single bare query). None → defaults.
+        self.query_variants = (
+            tuple(query_variants)
+            if query_variants is not None
+            else _DEFAULT_QUERY_VARIANTS
+        )
 
     def _headers(self) -> dict[str, str]:
         if not (self._client_id and self._client_secret):
@@ -183,6 +196,25 @@ class NaverShopAdapter(SourceAdapter):
             return q
         return f"중고 {q}"
 
+    def _expand_variants(self, base: str) -> list[str]:
+        """Expand a base query into the configured suffix variants.
+
+        Empty self.query_variants → single base query.
+        Each variant is appended after the prefixed base, deduplicated, and
+        the bare base is always included (even if not in variants) so the
+        original recall is preserved.
+        """
+        if not base:
+            return []
+        if not self.query_variants:
+            return [base]
+        seen: list[str] = []
+        for suffix in self.query_variants:
+            q = f"{base} {suffix}".strip() if suffix else base
+            if q and q not in seen:
+                seen.append(q)
+        return seen
+
     def _fetch(self, query: str, start: int) -> str:
         params = {
             "query": query,
@@ -202,34 +234,40 @@ class NaverShopAdapter(SourceAdapter):
         category: str | None = None,  # noqa: ARG002
         pages: int = 1,
     ) -> list[UsedListing]:
-        q = self._normalize_query(query)
-        if not q:
+        base = self._normalize_query(query)
+        if not base:
             return []
         if not (self._client_id and self._client_secret):
             print("  [naver_shop] credentials missing — skipping")
             return []
 
+        seen_listing_ids: set[str] = set()
         out: list[UsedListing] = []
         # `start` is 1-based, max 1000. With page_size=100 → max 10 pages.
         max_start = min(pages, 10) * self.page_size
-        start = 1
-        while start <= max_start:
-            try:
-                body = self._fetch(q, start)
-            except httpx.HTTPError as e:
-                print(f"  [naver_shop] '{q}' start={start} failed: {e}")
-                break
-            listings = parse_response(body, accept_types=self.accept_types)
-            out.extend(listings)
-            print(
-                f"  [naver_shop] '{q}' start={start}: "
-                f"+{len(listings)} listings (productType in {sorted(self.accept_types)})"
-            )
-            if not listings:
-                break
-            start += self.page_size
-            if start <= max_start:
-                time.sleep(self.sleep_seconds)
+        for variant in self._expand_variants(base):
+            start = 1
+            while start <= max_start:
+                try:
+                    body = self._fetch(variant, start)
+                except httpx.HTTPError as e:
+                    print(f"  [naver_shop] '{variant}' start={start} failed: {e}")
+                    break
+                listings = parse_response(body, accept_types=self.accept_types)
+                # Dedup across variants — same listing may surface under multiple suffixes.
+                fresh = [l for l in listings if l.listing_id not in seen_listing_ids]
+                seen_listing_ids.update(l.listing_id for l in fresh)
+                out.extend(fresh)
+                print(
+                    f"  [naver_shop] '{variant}' start={start}: "
+                    f"+{len(fresh)} new (raw {len(listings)}, "
+                    f"productType in {sorted(self.accept_types)})"
+                )
+                if not listings:
+                    break
+                start += self.page_size
+                if start <= max_start:
+                    time.sleep(self.sleep_seconds)
         return out
 
     def fetch_recent(
