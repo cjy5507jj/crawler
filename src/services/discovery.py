@@ -40,6 +40,42 @@ _retry_http = retry(
 )
 
 
+# Supabase PostgREST 단일 row update 재시도 헬퍼.
+# launchd 환경에서 vocab/discovery 단계의 row-by-row update 가
+# `httpx.RemoteProtocolError: ConnectionTerminated` 로 끊긴 사례가 있어
+# 짧은 backoff 로 5회 재시도. (idempotent UPDATE 라 안전.)
+_retry_db_call = retry(
+    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    reraise=True,
+)
+
+
+def _insert_sku_lines(db: "_DBLike", rows: list[dict]) -> None:
+    db.table("sku_lines").insert(rows).execute()
+
+
+def _update_sku_line(
+    db: "_DBLike", *, row_id: int, doc_freq: int, confidence: float
+) -> None:
+    db.table("sku_lines").update(
+        {"doc_freq": doc_freq, "confidence": confidence, "updated_at": "now()"}
+    ).eq("id", row_id).execute()
+
+
+def _insert_brands(db: "_DBLike", rows: list[dict]) -> None:
+    db.table("brands").insert(rows).execute()
+
+
+def _update_brand(
+    db: "_DBLike", *, row_id: int, doc_freq: int, aliases: list[str]
+) -> None:
+    db.table("brands").update(
+        {"doc_freq": doc_freq, "aliases": aliases, "updated_at": "now()"}
+    ).eq("id", row_id).execute()
+
+
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -282,15 +318,14 @@ def discover_brands_from_products(
 
     chunk = 500
     for i in range(0, len(new_payloads), chunk):
-        db.table("brands").insert(new_payloads[i : i + chunk]).execute()
+        _retry_db_call(_insert_brands)(db, new_payloads[i : i + chunk])
     for upd in update_payloads:
-        db.table("brands").update(
-            {
-                "doc_freq": upd["doc_freq"],
-                "aliases": upd["aliases"],
-                "updated_at": "now()",
-            }
-        ).eq("id", upd["id"]).execute()
+        _retry_db_call(_update_brand)(
+            db,
+            row_id=upd["id"],
+            doc_freq=upd["doc_freq"],
+            aliases=upd["aliases"],
+        )
 
     wrote = len(new_payloads) + len(update_payloads)
     print(
@@ -402,15 +437,16 @@ def discover_sku_lines_from_products(
 
     chunk = 500
     for i in range(0, len(new_payloads), chunk):
-        db.table("sku_lines").insert(new_payloads[i : i + chunk]).execute()
+        _retry_db_call(_insert_sku_lines)(db, new_payloads[i : i + chunk])
+    # canonical/category 가 NOT NULL 이라 upsert 로 partial-set 가 위험 →
+    # row-by-row UPDATE 유지하되 connection 끊김 시 tenacity 가 재시도.
     for upd in update_payloads:
-        db.table("sku_lines").update(
-            {
-                "doc_freq": upd["doc_freq"],
-                "confidence": upd["confidence"],
-                "updated_at": "now()",
-            }
-        ).eq("id", upd["id"]).execute()
+        _retry_db_call(_update_sku_line)(
+            db,
+            row_id=upd["id"],
+            doc_freq=upd["doc_freq"],
+            confidence=upd["confidence"],
+        )
 
     total_wrote = len(new_payloads) + len(update_payloads)
     print(
