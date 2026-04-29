@@ -156,9 +156,12 @@ CATEGORY_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(r"\b(core\s?ultra\s?[3579]\s?\d{3})\b", re.I),
     ),
     "gpu": (
-        re.compile(r"\b(rtx\s?\d{4}\s?(?:ti|super)?)\b", re.I),         # RTX 4070 Ti
-        re.compile(r"\b(gtx\s?\d{3,4}\s?(?:ti|super)?)\b", re.I),
-        re.compile(r"\b(rx\s?\d{3,4}\s?(?:xt|gre)?)\b", re.I),          # RX 7800 XT
+        # Suffix alternation: longest-first ('ti super' / 'super' / 'ti')
+        # to avoid losing 'SUPER' on cards like RTX 4070 Ti SUPER, RTX 5070 SUPER.
+        re.compile(r"\b(rtx\s?\d{4}\s?(?:ti\s?super|super|ti)?)\b", re.I),  # RTX 4070 Ti / Ti SUPER
+        re.compile(r"\b(gtx\s?\d{3,4}\s?(?:ti\s?super|super|ti)?)\b", re.I),
+        # AMD: 'xtx' must precede 'xt' (else 'xt' wins) and 'gre' included.
+        re.compile(r"\b(rx\s?\d{3,4}\s?(?:xtx|xt|gre)?)\b", re.I),           # RX 7900 XTX / XT / GRE
         re.compile(r"\b(arc\s?[ab]\d{3})\b", re.I),
     ),
     "ram": (
@@ -170,7 +173,12 @@ CATEGORY_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     "ssd": (
         re.compile(r"\b(\d{1,4}(?:tb|gb))\b", re.I),
         re.compile(r"\b(nvme|sata|m\.2|pcie\s?[345]\.0?)\b", re.I),
-        re.compile(r"\b(\d{3,4}\s?evo|pro|qvo)\b", re.I),               # 990 PRO, 980 EVO
+        # Alternation must stay INSIDE the capture group — the previous form
+        # `(\d{3,4}\s?evo|pro|qvo)` parsed as `(\d{3,4}\s?evo) | (pro) | (qvo)`,
+        # so '990 PRO' captured only 'pro' and every Samsung Pro SSD collapsed
+        # into model_name='pro'. Non-capturing inner alternation forces the
+        # digit prefix to stay attached.
+        re.compile(r"\b(\d{3,4}\s?(?:evo|pro|qvo))\b", re.I),           # 990 PRO, 980 EVO, 870 QVO
     ),
     "hdd": (
         re.compile(r"\b(\d{1,2}tb)\b", re.I),

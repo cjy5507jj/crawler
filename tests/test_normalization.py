@@ -75,9 +75,29 @@ def test_extract_category_tokens_cpu() -> None:
 
 
 def test_extract_category_tokens_gpu() -> None:
+    # GPU suffix alternation must keep the longest match. RTX 4070 Ti SUPER
+    # and RTX 4070 Ti are different SKUs and must produce different tokens.
     assert "rtx4070ti" in extract_category_tokens("gpu", "ASUS ROG RTX 4070 Ti")
-    assert "rtx4070ti" in extract_category_tokens("gpu", "MSI RTX 4070 Ti SUPER")
+    assert "rtx4070tisuper" in extract_category_tokens("gpu", "MSI RTX 4070 Ti SUPER")
+    assert "rtx5070super" in extract_category_tokens("gpu", "이엠텍 RTX 5070 SUPER")
     assert "rtx4070" in extract_category_tokens("gpu", "기가바이트 RTX 4070")
+    # AMD: XTX must outrank XT, GRE included.
+    assert "rx7900xtx" in extract_category_tokens("gpu", "사파이어 RX 7900 XTX")
+    assert "rx7900xt" in extract_category_tokens("gpu", "MSI RX 7900 XT")
+    assert "rx7900gre" in extract_category_tokens("gpu", "ASRock RX 7900 GRE")
+
+
+def test_extract_category_tokens_ssd() -> None:
+    # SSD alternation regression: pre-fix bug collapsed '990 PRO' to 'pro' alone
+    # because alternation parsed as `(\d{3,4}\s?evo)|(pro)|(qvo)`.
+    # Now the digit prefix is mandatory (non-capturing inner alternation).
+    assert "990pro" in extract_category_tokens("ssd", "삼성 990 PRO 1TB")
+    assert "980pro" in extract_category_tokens("ssd", "Samsung 980 Pro NVMe 2TB")
+    assert "980evo" in extract_category_tokens("ssd", "삼성 980 EVO 500GB")
+    assert "870qvo" in extract_category_tokens("ssd", "삼성 870 QVO 4TB SATA")
+    # Bare 'PRO' / 'EVO' without a digit prefix must NOT match.
+    bare = extract_category_tokens("ssd", "Crucial PRO M.2 SSD")
+    assert not any(t in bare for t in ("pro", "evo", "qvo"))
 
 
 def test_extract_category_tokens_mainboard() -> None:
