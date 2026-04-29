@@ -2,6 +2,11 @@
 
 Picks the most useful model_name strings per category — distinct, non-empty,
 preferring those that are short enough to be effective search keywords.
+
+Augmented with category-specific cold-spot seed keywords (case/psu/cooler/hdd)
+that don't surface naturally from product model_names — generic Korean
+keywords ("미들타워", "850W 골드") drive bunjang/joongna recall on categories
+whose model_name strings are too SKU-specific.
 """
 
 from __future__ import annotations
@@ -19,6 +24,40 @@ class _SupabaseLike(Protocol):
 _TOO_SHORT = 2          # below this length is too generic
 _TOO_LONG = 30          # above this length is too specific
 _BAD_TOKENS = {"plus", "pro", "evo", "max"}   # stand-alone words too generic
+
+
+# Cold-spot category seed queries — generic Korean keywords that pull broad
+# secondary-market listings for categories whose model_name strings (e.g.
+# "AAA-X470 Pro Wifi-X") are too SKU-specific to drive recall on their own.
+# Prepended to the model-derived list — guaranteed in the output regardless
+# of frequency. Source: handoff/used-market-coverage-handoff.md §3.1 + Day 1
+# matrix (docs/diagnosis/used-market-sources-matrix.md §4.3).
+_CATEGORY_SEED_QUERIES: dict[str, tuple[str, ...]] = {
+    "case": (
+        "미들타워 케이스",
+        "ATX 케이스",
+        "강화유리 케이스",
+        "큐브 케이스",
+    ),
+    "psu": (
+        "850W 골드",
+        "750W 모듈러",
+        "1000W 플래티넘",
+        "850W 파워",
+    ),
+    "cooler": (
+        "공랭쿨러",
+        "AIO 240",
+        "수랭 360",
+        "CPU 쿨러",
+    ),
+    "hdd": (
+        "WD 8TB",
+        "Seagate IronWolf",
+        "외장하드 4TB",
+        "WD 4TB",
+    ),
+}
 
 
 def _good_query(model_name: str) -> bool:
@@ -53,6 +92,8 @@ def derive_queries(
          which is critical for sparse categories like monitor/cpu.
       4. Filter both shapes through `_good_query` and the length cap.
       5. Order by frequency, most-listed first.
+      6. For cold-spot categories (case/psu/cooler/hdd), prepend generic
+         Korean seed keywords — guaranteed in output even when limit is small.
     """
     rows = (
         db.table("products")
@@ -78,4 +119,9 @@ def derive_queries(
             continue
         counter[combined] += 1
 
-    return [name for name, _ in counter.most_common(limit)]
+    seed = list(_CATEGORY_SEED_QUERIES.get(category, ()))
+    seed_set = {s for s in seed}
+    model_queries = [
+        name for name, _ in counter.most_common() if name not in seed_set
+    ]
+    return (seed + model_queries)[:limit]

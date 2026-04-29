@@ -24,6 +24,7 @@ from src.adapters.bunjang import BunjangAdapter
 from src.adapters.coolenjoy import CoolenjoyAdapter
 from src.adapters.daangn import DaangnAdapter
 from src.adapters.joonggonara import JoonggonaraAdapter
+from src.adapters.naver_shop import NaverShopAdapter, has_credentials as has_naver_credentials
 from src.adapters.quasarzone import QuasarzoneAdapter
 from src.clients.supabase_client import get_client
 from src.crawlers.danawa import CATEGORY_MAP
@@ -68,11 +69,14 @@ _BOARD_SOURCES = {
     "quasarzone": _make_quasarzone,
 }
 # Search-style sources require explicit queries (no flat recent feed).
-_SEARCH_SOURCES = {
+_SEARCH_SOURCES: dict[str, Any] = {
     "bunjang": BunjangAdapter,
     "joonggonara": JoonggonaraAdapter,
     "daangn": DaangnAdapter,
 }
+if has_naver_credentials():
+    print("  [naver_shop] NAVER_CLIENT_ID + NAVER_CLIENT_SECRET present — enabling")
+    _SEARCH_SOURCES["naver_shop"] = NaverShopAdapter
 
 
 def _safe(label: str, fn) -> None:

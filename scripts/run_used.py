@@ -10,6 +10,7 @@ from src.adapters.bunjang import BunjangAdapter
 from src.adapters.coolenjoy import CoolenjoyAdapter
 from src.adapters.daangn import DaangnAdapter
 from src.adapters.joonggonara import JoonggonaraAdapter
+from src.adapters.naver_shop import NaverShopAdapter
 from src.adapters.quasarzone import QuasarzoneAdapter
 from src.clients.supabase_client import get_client
 from src.crawlers.danawa import CATEGORY_MAP
@@ -22,6 +23,7 @@ _ADAPTERS = {
     "bunjang": BunjangAdapter,
     "daangn": DaangnAdapter,
     "joonggonara": JoonggonaraAdapter,
+    "naver_shop": NaverShopAdapter,
 }
 
 
@@ -56,7 +58,7 @@ def main() -> None:
     queries = None
     if args.queries:
         queries = [q.strip() for q in args.queries.split(",") if q.strip()]
-    elif args.source in {"bunjang", "daangn", "joonggonara"}:
+    elif args.source in {"bunjang", "daangn", "joonggonara", "naver_shop"}:
         print(
             f"error: --queries is required for source '{args.source}' "
             "(no flat recent feed)",
