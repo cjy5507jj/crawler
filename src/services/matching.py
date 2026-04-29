@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from src.adapters.base import UsedListing
@@ -10,9 +11,34 @@ from src.normalization.catalog import (
     normalize_product_name,
 )
 
-# Score thresholds.
-MATCH_THRESHOLD = 0.55          # >= : matched
-PENDING_THRESHOLD = 0.40        # >= and < MATCH_THRESHOLD : recorded with no match link
+
+def _read_threshold(env_name: str, default: float) -> float:
+    """Read a threshold from env, falling back to the default. Invalid values
+    raise immediately rather than silently masking misconfiguration."""
+    raw = os.environ.get(env_name)
+    if raw is None or raw == "":
+        return default
+    try:
+        v = float(raw)
+    except ValueError as e:
+        raise ValueError(
+            f"{env_name}={raw!r} is not a valid float (expected e.g. '0.45')"
+        ) from e
+    if not (0.0 <= v <= 1.0):
+        raise ValueError(f"{env_name}={v} must be in [0.0, 1.0]")
+    return v
+
+
+# Score thresholds — env-driven so A/B threshold sweeps don't require code edits.
+# MATCH_THRESHOLD: >= → matched (linked to product_id, snapshot recorded)
+# PENDING_THRESHOLD: >= and < MATCH_THRESHOLD → recorded with no link (review queue)
+MATCH_THRESHOLD = _read_threshold("MATCH_THRESHOLD", 0.55)
+PENDING_THRESHOLD = _read_threshold("PENDING_THRESHOLD", 0.40)
+if PENDING_THRESHOLD > MATCH_THRESHOLD:
+    raise ValueError(
+        f"PENDING_THRESHOLD ({PENDING_THRESHOLD}) must be <= "
+        f"MATCH_THRESHOLD ({MATCH_THRESHOLD})"
+    )
 
 
 @dataclass

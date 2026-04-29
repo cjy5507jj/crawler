@@ -26,6 +26,7 @@ from src.adapters.daangn import DaangnAdapter
 from src.adapters.joonggonara import JoonggonaraAdapter
 from src.adapters.naver_shop import NaverShopAdapter, has_credentials as has_naver_credentials
 from src.adapters.quasarzone import QuasarzoneAdapter
+from src.adapters.ruliweb_market import RuliwebMarketAdapter
 from src.clients.supabase_client import get_client
 from src.crawlers.danawa import CATEGORY_MAP
 from src.normalization import vocab
@@ -67,6 +68,9 @@ def _make_quasarzone() -> QuasarzoneAdapter:
 _BOARD_SOURCES = {
     "coolenjoy": CoolenjoyAdapter,
     "quasarzone": _make_quasarzone,
+    # Ruliweb 핫딜 중고장터 (board=45) — single PC-hardware board, no per-category
+    # split, so it lives alongside coolenjoy/quasarzone in the recent-feed group.
+    "ruliweb_market": RuliwebMarketAdapter,
 }
 # Search-style sources require explicit queries (no flat recent feed).
 _SEARCH_SOURCES: dict[str, Any] = {

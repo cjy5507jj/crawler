@@ -199,5 +199,248 @@
     "candidates": [
       {"name": "ASUS RTX 4070 DUAL OC 12GB", "expected_match": false}
     ]
+  },
+  {
+    "id": "gpu_zotac_4060ti_brand",
+    "category": "gpu",
+    "listing_title": "ZOTAC RTX 4060 Ti AMP 8GB 박스 미개봉",
+    "candidates": [
+      {"name": "ZOTAC GAMING 지포스 RTX 4060 Ti AMP 8GB", "expected_match": true},
+      {"name": "ASUS DUAL 지포스 RTX 4060 Ti OC 8GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_inno3d_4070s_dq_brand_strict",
+    "category": "gpu",
+    "listing_title": "INNO3D 지포스 RTX 4070 SUPER X3 12GB",
+    "candidates": [
+      {"name": "INNO3D 지포스 RTX 4070 SUPER X3 OC 12GB", "expected_match": true},
+      {"name": "GIGABYTE 지포스 RTX 4070 SUPER WINDFORCE 12GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_palit_4070ti_super",
+    "category": "gpu",
+    "listing_title": "PALIT RTX 4070 Ti SUPER GAMINGPRO OC 16GB 풀박",
+    "candidates": [
+      {"name": "PALIT 지포스 RTX 4070 Ti SUPER GamingPro OC D6X 16GB", "expected_match": true},
+      {"name": "PALIT 지포스 RTX 4070 Ti GamingPro 12GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_amd_rx7900xt_xfx",
+    "category": "gpu",
+    "listing_title": "XFX 라데온 RX 7900 XT MERC 310 BLACK 20GB",
+    "candidates": [
+      {"name": "XFX SPEEDSTER MERC 310 라데온 RX 7900 XT BLACK 20GB", "expected_match": true},
+      {"name": "XFX SPEEDSTER MERC 310 라데온 RX 7900 XTX BLACK 24GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "gpu_brand_alias_geforce_vs_rtx",
+    "category": "gpu",
+    "listing_title": "지포스 RTX 4060 8GB 박스 미개봉 정품",
+    "candidates": [
+      {"name": "MSI 지포스 RTX 4060 VENTUS 2X BLACK 8GB", "expected_match": false},
+      {"name": "ASUS 지포스 RTX 4060 DUAL OC 8GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_intel_12900k_vs_12900kf",
+    "category": "cpu",
+    "listing_title": "인텔 i9-12900K 정품 개봉",
+    "candidates": [
+      {"name": "인텔 코어i9-12세대 12900K (앨더레이크)", "expected_match": true},
+      {"name": "인텔 코어i9-12세대 12900KF (앨더레이크)", "expected_match": false},
+      {"name": "인텔 코어i9-13세대 13900K (랩터레이크)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_amd_5800x3d_vs_5800x",
+    "category": "cpu",
+    "listing_title": "AMD 라이젠7 5800X3D 정품박스",
+    "candidates": [
+      {"name": "AMD 라이젠7-5세대 5800X3D (버미어)", "expected_match": true},
+      {"name": "AMD 라이젠7-5세대 5800X (버미어)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_intel_13900ks_vs_13900k",
+    "category": "cpu",
+    "listing_title": "인텔 i9-13900KS 미개봉 박스",
+    "candidates": [
+      {"name": "인텔 코어i9-13세대 13900KS (랩터레이크)", "expected_match": true},
+      {"name": "인텔 코어i9-13세대 13900K (랩터레이크)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_amd_9950x3d",
+    "category": "cpu",
+    "listing_title": "라이젠 9 9950X3D 정품 미개봉",
+    "candidates": [
+      {"name": "AMD 라이젠9-9세대 9950X3D (그래니트 릿지)", "expected_match": true},
+      {"name": "AMD 라이젠9-9세대 9950X (그래니트 릿지)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_intel_14900k_open_box",
+    "category": "cpu",
+    "listing_title": "인텔 i9-14900K 정품 (개봉만 한 새제품)",
+    "candidates": [
+      {"name": "인텔 코어i9-14세대 14900K (랩터레이크 리프레시)", "expected_match": true},
+      {"name": "인텔 코어i9-14세대 14900KS (랩터레이크 리프레시)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "cpu_amd_7600_vs_7600x",
+    "category": "cpu",
+    "listing_title": "라이젠5 7600 비-X 정품박스",
+    "candidates": [
+      {"name": "AMD 라이젠5-7세대 7600 (라파엘)", "expected_match": true},
+      {"name": "AMD 라이젠5-7세대 7600X (라파엘)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_ddr5_5200_64gb_dual_channel",
+    "category": "ram",
+    "listing_title": "삼성 DDR5-5200 64GB (32Gx2) 듀얼채널 정품",
+    "candidates": [
+      {"name": "삼성전자 DDR5-5200 64GB(32Gx2) 정품", "expected_match": true},
+      {"name": "삼성전자 DDR5-5200 32GB(16Gx2) 정품", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_teamgroup_ddr5_8000_lowprofile",
+    "category": "ram",
+    "listing_title": "TEAMGROUP T-FORCE DDR5-8000 32GB 키트",
+    "candidates": [
+      {"name": "TEAMGROUP T-FORCE DELTA RGB DDR5-8000 CL38 32GB(16Gx2)", "expected_match": true},
+      {"name": "TEAMGROUP T-FORCE DELTA RGB DDR5-7200 CL34 32GB(16Gx2)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ram_corsair_ddr4_3600_brand_alias",
+    "category": "ram",
+    "listing_title": "커세어 DDR4-3600 16GB Vengeance 정품",
+    "candidates": [
+      {"name": "CORSAIR DDR4-3600 CL18 Vengeance LPX 16GB", "expected_match": true},
+      {"name": "CORSAIR DDR4-3200 CL16 Vengeance LPX 16GB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_samsung_980pro_2tb",
+    "category": "ssd",
+    "listing_title": "삼성 980 PRO 2TB NVMe 정품",
+    "candidates": [
+      {"name": "삼성전자 980 PRO M.2 NVMe 2TB", "expected_match": true},
+      {"name": "삼성전자 990 PRO M.2 NVMe 2TB", "expected_match": false},
+      {"name": "삼성전자 980 PRO M.2 NVMe 1TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_sk_hynix_p41_platinum_1tb",
+    "category": "ssd",
+    "listing_title": "SK하이닉스 P41 Platinum 1TB NVMe 미개봉",
+    "candidates": [
+      {"name": "SK하이닉스 Platinum P41 M.2 NVMe 1TB", "expected_match": true},
+      {"name": "SK하이닉스 Platinum P41 M.2 NVMe 2TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_kioxia_exceria_g2_4tb_capacity_dq",
+    "category": "ssd",
+    "listing_title": "KIOXIA EXCERIA G2 NVMe 1TB 정품",
+    "candidates": [
+      {"name": "KIOXIA EXCERIA G2 M.2 NVMe 1TB", "expected_match": true},
+      {"name": "KIOXIA EXCERIA G2 M.2 NVMe 4TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_wd_blue_sn570_500gb",
+    "category": "ssd",
+    "listing_title": "WD BLUE SN570 500GB M.2 NVMe",
+    "candidates": [
+      {"name": "Western Digital WD BLUE SN570 M.2 NVMe 500GB", "expected_match": true},
+      {"name": "Western Digital WD BLUE SN570 M.2 NVMe 1TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "mainboard_gigabyte_b760_aorus_elite",
+    "category": "mainboard",
+    "listing_title": "GIGABYTE B760 AORUS ELITE AX DDR4 새상품",
+    "candidates": [
+      {"name": "GIGABYTE B760 AORUS ELITE AX DDR4 (피씨디렉트)", "expected_match": true},
+      {"name": "GIGABYTE B760M AORUS ELITE AX DDR4 (피씨디렉트)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "mainboard_msi_z790_tomahawk",
+    "category": "mainboard",
+    "listing_title": "MSI MAG Z790 TOMAHAWK WIFI DDR5 미개봉",
+    "candidates": [
+      {"name": "MSI MAG Z790 TOMAHAWK WIFI DDR5 (코잘트)", "expected_match": true},
+      {"name": "MSI MAG Z790 TOMAHAWK MAX WIFI (코잘트)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "mainboard_asus_b550_strix_vs_prime",
+    "category": "mainboard",
+    "listing_title": "ASUS ROG STRIX B550-F GAMING WIFI II 박스",
+    "candidates": [
+      {"name": "ASUS ROG STRIX B550-F GAMING WIFI II (STCOM)", "expected_match": true},
+      {"name": "ASUS PRIME B550-PLUS (STCOM)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "mainboard_asrock_x670e_steel_legend",
+    "category": "mainboard",
+    "listing_title": "ASRock X670E Steel Legend WiFi 새제품",
+    "candidates": [
+      {"name": "ASRock X670E Steel Legend WiFi (에즈윈)", "expected_match": true},
+      {"name": "ASRock B650E Steel Legend WiFi (에즈윈)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "ssd_branded_dq_ssd_capacity_collision",
+    "category": "ssd",
+    "listing_title": "990 PRO 1TB 미개봉 (삼성)",
+    "candidates": [
+      {"name": "삼성전자 990 PRO M.2 NVMe 1TB", "expected_match": true},
+      {"name": "삼성전자 970 EVO Plus M.2 NVMe 1TB", "expected_match": false}
+    ]
+  },
+  {
+    "id": "exclusion_full_pc_ram_combo",
+    "category": "ram",
+    "listing_title": "본체 일괄 RTX 4070 + DDR5 32GB 키트 + 13700K 풀세트",
+    "candidates": [
+      {"name": "삼성전자 DDR5-5600 32GB (정품)", "expected_match": false},
+      {"name": "G.SKILL DDR5-6000 CL30 32GB(16Gx2)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "exclusion_buy_request_cpu",
+    "category": "cpu",
+    "listing_title": "라이젠 7800X3D 삽니다 직거래 부산",
+    "candidates": [
+      {"name": "AMD 라이젠7-7세대 7800X3D (라파엘)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "exclusion_accessory_thermal_paste",
+    "category": "cpu",
+    "listing_title": "써멀구리스 노ctua NT-H2 새제품 미개봉",
+    "candidates": [
+      {"name": "AMD 라이젠5-5세대 5600X (버미어)", "expected_match": false}
+    ]
+  },
+  {
+    "id": "negative_unrelated_query_to_pc_part",
+    "category": "gpu",
+    "listing_title": "닌텐도 스위치 OLED 흰색 박스 새제품",
+    "candidates": [
+      {"name": "ASUS RTX 4070 DUAL OC 12GB", "expected_match": false},
+      {"name": "MSI RTX 4070 VENTUS 3X 12GB", "expected_match": false}
+    ]
   }
 ]
