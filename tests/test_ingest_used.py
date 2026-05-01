@@ -240,3 +240,130 @@ def test_match_reasons_persisted_in_payload() -> None:
     # present in the payload (key exists).
     unmatched = by_id["L2"]
     assert "match_reasons" in unmatched
+
+
+def test_naver_shop_snapshots_are_recorded_as_b2c_not_used() -> None:
+    db = FakeDB()
+    _seed_products(db)
+
+    adapter = _StaticAdapter([
+        UsedListing(
+            source="naver_shop",
+            listing_id="N1",
+            title="AMD 라이젠5 5600X 중고 리퍼",
+            price=210_000,
+            url="http://example/N1",
+        ),
+    ])
+    adapter.source_name = "naver_shop"
+
+    summary = run_used(db, adapter, category="cpu")
+
+    assert summary["matched"] == 1
+    snapshots = db.rows("price_snapshots")
+    assert len(snapshots) == 1
+    assert snapshots[0]["market_type"] == "b2c"
+
+
+def test_run_used_matches_consumer_phone_and_persists_domain_specs() -> None:
+    db = FakeDB()
+    db.table("products").upsert(
+        {
+            "category": "iphone",
+            "domain": "phone",
+            "source": "seed",
+            "source_id": "iphone-15-pro-256",
+            "name": "Apple iPhone 15 Pro 256GB",
+            "brand": "apple",
+            "model_name": "iphone 15 pro 256gb",
+            "canonical_key": "phone:apple:iphone-15-pro:256gb",
+            "specs": {"model": "iphone 15 pro", "storage_gb": 256},
+        },
+        on_conflict="source,source_id",
+    ).execute()
+
+    adapter = _StaticAdapter([
+        UsedListing(
+            source="bunjang",
+            listing_id="P1",
+            title="아이폰15 프로 256GB 자급제",
+            price=900_000,
+        )
+    ])
+
+    summary = run_used(db, adapter, category="iphone")
+
+    assert summary["matched"] == 1
+    row = db.rows("used_listings")[0]
+    assert row["domain"] == "phone"
+    assert row["parsed_specs"]["storage_gb"] == 256
+    assert row["matched_product_id"] is not None
+
+
+def test_run_used_auto_creates_consumer_product_for_new_model_capacity() -> None:
+    db = FakeDB()
+    adapter = _StaticAdapter([
+        UsedListing(
+            source="bunjang",
+            listing_id="P17",
+            title="아이폰 17 프로 256GB 자급제 미개봉",
+            price=1_250_000,
+        )
+    ])
+
+    summary = run_used(db, adapter, category="iphone")
+
+    assert summary["matched"] == 1
+    products = db.rows("products")
+    assert len(products) == 1
+    assert products[0]["source"] == "consumer_auto"
+    assert products[0]["canonical_key"] == "phone:apple:iphone-17-pro:256gb"
+    assert products[0]["specs"]["storage_gb"] == 256
+
+    used = db.rows("used_listings")[0]
+    assert used["matched_product_id"] == products[0]["id"]
+    assert used["domain"] == "phone"
+    assert len(db.rows("price_snapshots")) == 1
+
+
+def test_run_danawa_payload_includes_dynamic_pc_identity() -> None:
+    from src.crawlers.danawa import RawProduct
+    from src.services.ingest import _build_product_payload
+
+    payload = _build_product_payload(
+        "gpu",
+        RawProduct(
+            source_id="gpu-1",
+            name="MSI 지포스 RTX 5070 게이밍 트리오 OC D7 12GB",
+            price=900_000,
+            shop_name="shop",
+            url="https://example.com/gpu-1",
+        ),
+    )
+
+    assert payload["domain"] == "pc_parts"
+    assert payload["canonical_key"] == "pc_parts:gpu:msi:rtx5070:gaming-trio"
+    assert payload["specs"]["category_tokens"] == ["rtx5070"]
+
+
+def test_run_used_auto_creates_pc_product_for_strong_new_gpu_identity() -> None:
+    db = FakeDB()
+    adapter = _StaticAdapter([
+        UsedListing(
+            source="bunjang",
+            listing_id="G1",
+            title="MSI RTX 6090 게이밍 트리오 32GB 미개봉",
+            price=2_500_000,
+        )
+    ])
+
+    summary = run_used(db, adapter, category="gpu")
+
+    assert summary["matched"] == 1
+    product = db.rows("products")[0]
+    assert product["source"] == "pc_auto"
+    assert product["domain"] == "pc_parts"
+    assert product["canonical_key"] == "pc_parts:gpu:msi:rtx6090:gaming-trio"
+    assert product["specs"]["category_tokens"] == ["rtx6090"]
+    used = db.rows("used_listings")[0]
+    assert used["matched_product_id"] == product["id"]

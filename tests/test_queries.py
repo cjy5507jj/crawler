@@ -129,6 +129,12 @@ def test_derive_queries_no_seed_for_non_cold_spot_category() -> None:
     assert "ryzen 5 5600x" in queries
 
 
+def test_derive_queries_prepends_consumer_seed_for_iphone() -> None:
+    db = _FakeDB([])
+    queries = derive_queries(db, category="iphone", limit=3)
+    assert queries == ["아이폰 15 프로 256GB", "아이폰 15 프로 512GB", "아이폰 15 프로맥스 256GB"]
+
+
 def test_derive_queries_seed_dedupes_against_model_match() -> None:
     # If a product happens to have model_name "WD 4TB", it shouldn't appear twice.
     db = _FakeDB([

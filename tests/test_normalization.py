@@ -60,6 +60,13 @@ def test_detect_brand_returns_none_when_unknown() -> None:
     assert detect_brand("그냥 잡다한 부품") is None
 
 
+def test_detect_brand_ignores_unsafe_two_letter_auto_brand(monkeypatch) -> None:
+    from src.normalization import vocab
+
+    monkeypatch.setattr(vocab, "brand_aliases", lambda: [("in", ("in",))])
+    assert detect_brand("ADATA LEGEND 900 M.2 NVMe 파인인포 (1TB)in", category="ssd") is None
+
+
 def test_tokenize_model_drops_noise() -> None:
     tokens = tokenize_model("[정품] AMD 라이젠5 5600X 박스 (택포)")
     assert "정품" not in tokens
@@ -109,6 +116,9 @@ def test_extract_category_tokens_mainboard() -> None:
 def test_is_excluded_listing() -> None:
     assert is_excluded_listing("RTX 4070 삽니다")
     assert is_excluded_listing("부품용 본체")
+    assert is_excluded_listing("PALIT RTX 5090 GAMEROCK 32GB 박스만")
+    assert is_excluded_listing("Sony 77인치 QD-OLED 4K UHD 스마트 TV")
+    assert is_excluded_listing("인네트워크 M.2 NVMe to PCIe 확장 카드")
     assert not is_excluded_listing("MSI RTX 4070 정품 팝니다")
 
 

@@ -95,6 +95,8 @@ CHIPSET_ALIASES: dict[str, tuple[str, ...]] = {
     "nvidia": ("nvidia", "엔비디아", "geforce", "rtx", "gtx", "지포스"),
 }
 
+_ALLOWED_SHORT_BRANDS = {"hp", "lg", "wd"}
+
 # Tokens that indicate the listing should be skipped entirely.
 # Includes:
 #  - buy-side posts (삽니다 / 구합니다 / 구함)
@@ -110,6 +112,7 @@ EXCLUDED_LISTING_KEYWORDS = (
     "교환",
     "고장",
     "부품용",
+    "박스만",
     "본체",
     "완본체",
     "세트일괄",
@@ -128,6 +131,10 @@ EXCLUDED_LISTING_KEYWORDS = (
     "일괄",
     "풀세트",
     "올인원",
+    "스마트 tv",
+    "smart tv",
+    "확장 카드",
+    "확장카드",
 )
 
 # Tokens stripped from the model string but do not invalidate the listing.
@@ -343,6 +350,8 @@ def detect_brand(name: str, category: str | None = None) -> str | None:
     chipset_canons = set(CHIPSET_ALIASES.keys()) if skip_chipsets else frozenset()
     for canonical, aliases in vocab.brand_aliases():
         if canonical in chipset_canons:
+            continue
+        if len(canonical) <= 2 and canonical not in _ALLOWED_SHORT_BRANDS:
             continue
         if any(alias in lowered for alias in aliases):
             return canonical

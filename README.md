@@ -38,6 +38,7 @@ Supabase 대시보드 SQL 에디터에 붙여넣고 Run:
 3. `sql/migration_002_vocabulary.sql` (brands / sku_lines / danawa_categories / unknown_vocab)
 4. `sql/migration_003_match_reasons.sql` (used_listings.match_reasons jsonb)
 5. `sql/migration_004_accessory_flag.sql` (products.is_accessory)
+6. `sql/migration_005_crawl_runs.sql` ~ `sql/migration_012_app_price_index_domains.sql` (운영 로그/시계열/watchlist/B2C 구분/app read model/도메인 확장 보강)
 
 ### 4. 풀 파이프라인 한 방
 
@@ -95,7 +96,7 @@ pytest -q
 
 | 컬럼 | 의미 |
 |---|---|
-| `used_count` | 윈도우 내 sanity-필터 통과한 used snapshot 수 |
+| `used_count` | 윈도우 내 C2C source + sanity-필터 통과한 used snapshot 수 |
 | `used_min` / `used_max` | 윈도우 내 최저/최고 |
 | `used_median` | 중앙값 (메인 시세) |
 | `used_mean` | **트림드 평균** — n≥10이면 상하 20%, n≥5이면 10% 절단 후 산술평균 |
@@ -112,6 +113,14 @@ pytest -q
 5. **Multi-component bundle 감지** — CPU+GPU/CPU+MB/GPU+MB 매물은 PC 빌드로 자동 제외
 
 **Sanity 필터**: median × 4 외 outlier 제거 + adaptive 트림드 평균.
+
+`naver_shop`은 B2C/리퍼/쇼핑몰 가격 신호로 보고 `price_snapshots.market_type='b2c'`로 저장한다. C2C 중고 시세 집계는 `bunjang`, `joonggonara`, `daangn`, `coolenjoy`, `quasarzone`, `ruliweb_market`만 사용한다.
+
+운영 로그는 `crawl_runs`에 기록되며, `run_all.py` 시작 시 6시간 이상 남아 있는 stale `running` row를 자동으로 `failed` 처리한다.
+
+앱/거래 시스템은 `sql/migration_012_app_price_index_domains.sql`의 `app_price_index` view를 read-only로 사용한다. 이 view는 `domain`, `canonical_key`, `specs`와 C2C 중고 중앙가/최저가, B2C 최저가, 신품가, 최저 노출가, C2B 매입 기준가(`used_median * 0.8`), confidence score를 한 row로 제공한다.
+
+PC 부품은 다나와 상품명에서 `pc_parts:<category>:<brand>:<model/spec...>` 형태의 `canonical_key`를 동적으로 생성한다. 다나와에 아직 없는 신제품이 중고 매물에서 먼저 발견되어도 강한 식별 토큰이 있으면 `pc_auto` product로 자동 생성된다. 핸드폰/노트북/맥북/가전도 모델/용량/모델코드 기반 `canonical_key`로 자동 생성된다.
 
 ---
 

@@ -19,6 +19,8 @@
     <string>/usr/local/bin:/usr/bin:/bin</string>
     <key>CRAWL_TRIGGER_SOURCE</key>
     <string>launchd</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
   </dict>
   <key>StartCalendarInterval</key>
   <dict>

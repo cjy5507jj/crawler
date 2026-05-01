@@ -41,7 +41,7 @@ from src.services.discovery import (
 )
 from src.services.ingest import run_danawa, run_used
 from src.services.queries import derive_queries
-from src.services.run_log import finish_run, start_run
+from src.services.run_log import finish_run, mark_stale_running_runs, start_run
 from src.services.watchlist import (
     check_watchlists,
     format_message,
@@ -200,6 +200,10 @@ def main() -> None:
     skip_sources = {s.strip() for s in args.skip_sources.split(",") if s.strip()}
 
     db = get_client()
+
+    stale_runs = mark_stale_running_runs(db)
+    if stale_runs:
+        print(f"[run-log] marked {stale_runs} stale running run(s) as failed")
 
     trigger_source = os.environ.get("CRAWL_TRIGGER_SOURCE", "manual")
     run_args = {

@@ -15,6 +15,8 @@ import re
 from collections import Counter
 from typing import Protocol
 
+from src.domains.consumer.catalog import query_seeds_for_category
+
 
 class _SupabaseLike(Protocol):
     def table(self, name: str): ...
@@ -119,7 +121,7 @@ def derive_queries(
             continue
         counter[combined] += 1
 
-    seed = list(_CATEGORY_SEED_QUERIES.get(category, ()))
+    seed = list(query_seeds_for_category(category) or _CATEGORY_SEED_QUERIES.get(category, ()))
     seed_set = {s for s in seed}
     model_queries = [
         name for name, _ in counter.most_common() if name not in seed_set

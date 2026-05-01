@@ -38,6 +38,37 @@ _NEW_PRICE_FLOORS: dict[str, int] = {
     "monitor": 50_000,
 }
 
+# Only true C2C / community-market sources should drive used-market stats.
+# B2C/search-shopping sources such as naver_shop are useful signals, but they
+# represent retail/refurb/list-price inventory and distort C2C medians.
+_C2C_USED_SOURCES = (
+    "bunjang",
+    "joonggonara",
+    "daangn",
+    "coolenjoy",
+    "quasarzone",
+    "ruliweb_market",
+)
+
+# Category-level used-price floors catch obvious non-product listings such as
+# "box only" or typo deposits before they can dominate a small sample median.
+_USED_PRICE_FLOORS: dict[str, int] = {
+    "cpu": 5_000,
+    "gpu": 50_000,
+    "ram": 3_000,
+    "ssd": 5_000,
+    "hdd": 5_000,
+    "mainboard": 10_000,
+    "psu": 5_000,
+    "cooler": 3_000,
+    "case": 10_000,
+    "monitor": 20_000,
+}
+
+# A used single component priced far above current new price is usually a full
+# build/bundle that matched one part token, not a legitimate used part signal.
+_USED_TO_NEW_MAX_RATIO = 1.5
+
 
 class _SupabaseLike(Protocol):
     def table(self, name: str): ...
@@ -104,6 +135,13 @@ def compute_stats(
 ) -> MarketStats:
     snaps = sorted(used_snapshots, key=lambda s: s.snapshot_at, reverse=True)
     raw_prices = [s.price for s in snaps if s.price is not None and s.price > 0]
+    used_floor = _USED_PRICE_FLOORS.get(category.lower()) if category else None
+    new_floor = _NEW_PRICE_FLOORS.get(category.lower()) if category else None
+    if used_floor is not None and (new_price is None or new_floor is None or new_price >= new_floor):
+        raw_prices = [p for p in raw_prices if p >= used_floor]
+    if new_price is not None and new_floor is not None and new_price >= new_floor:
+        max_used_price = int(new_price * _USED_TO_NEW_MAX_RATIO)
+        raw_prices = [p for p in raw_prices if p <= max_used_price]
     # Drop sale-glitch / placeholder outliers using a median-deviation filter
     # before computing min/max/mean/ratio. The "latest" still references the
     # most recent raw snapshot so the user can see what was actually crawled.
@@ -196,8 +234,9 @@ def _fetch_all_used_snapshots_grouped(
 ) -> dict[str, list[_Snapshot]]:
     rows = _page_through(
         db.table("price_snapshots")
-        .select("product_id,price,snapshot_at")
+        .select("product_id,price,snapshot_at,source")
         .eq("market_type", "used")
+        .in_("source", list(_C2C_USED_SOURCES))
         .gte("snapshot_at", since_iso)
         .order("snapshot_at", desc=True)
     )
@@ -232,6 +271,7 @@ def _fetch_latest_new_prices(db: _SupabaseLike) -> dict[str, int]:
 def _bulk_upsert_stats(db: _SupabaseLike, stats: list[MarketStats], chunk: int = 200) -> None:
     if not stats:
         return
+    computed_at = datetime.now(timezone.utc).isoformat()
     payloads = [
         {
             "product_id": s.product_id,
@@ -246,6 +286,7 @@ def _bulk_upsert_stats(db: _SupabaseLike, stats: list[MarketStats], chunk: int =
             "new_price": s.new_price,
             "used_to_new_ratio": s.used_to_new_ratio,
             "window_days": s.window_days,
+            "computed_at": computed_at,
         }
         for s in stats
     ]
