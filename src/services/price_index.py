@@ -22,6 +22,8 @@ class PriceIndex:
     c2c_used_min: int | None
     c2c_used_median: int | None
     b2c_min: int | None
+    reference_market_price: int | None
+    reference_price_count: int
     new_price: int | None
     lowest_available_price: int | None
     buy_offer_price: int | None
@@ -46,13 +48,20 @@ def _valid_b2c_prices(
     return prices
 
 
-def _confidence(c2c_used_count: int, b2c_min: int | None, new_price: int | None) -> float:
+def _confidence(
+    c2c_used_count: int,
+    b2c_min: int | None,
+    new_price: int | None,
+    reference_market_price: int | None,
+) -> float:
     # C2C count is the strongest signal. B2C/new prices are supporting anchors.
     score = min(max(c2c_used_count, 0) / 10, 0.8)
     if c2c_used_count > 0:
         return round(score, 2)
     if b2c_min is not None:
         score += 0.15
+    if reference_market_price is not None:
+        score += 0.20
     if new_price is not None:
         score += 0.10
     return round(min(score, 1.0), 2)
@@ -70,6 +79,7 @@ def compute_price_index(
     c2c_used_median: int | None,
     new_price: int | None,
     b2c_prices: Iterable[int | None],
+    reference_prices: Iterable[int | None] = (),
 ) -> PriceIndex:
     b2c_min = _min_positive(
         _valid_b2c_prices(
@@ -78,12 +88,17 @@ def compute_price_index(
             c2c_used_median=c2c_used_median,
         )
     )
+    reference_floor = 30_000 if domain == "phone" else 1
+    reference_values = [int(v) for v in reference_prices if v is not None and int(v) >= reference_floor]
+    reference_market_price = int(sum(reference_values) / len(reference_values)) if reference_values else None
     lowest_available_price = _min_positive([c2c_used_min, b2c_min, new_price])
     buy_offer_price = None
     if c2c_used_median is not None and c2c_used_count >= 3:
         # Conservative C2B anchor: leave room for inspection risk, margin, and
         # stale listings. This should become category/condition-specific later.
         buy_offer_price = int(c2c_used_median * 0.8)
+    elif reference_market_price is not None:
+        buy_offer_price = int(reference_market_price * 0.75)
 
     return PriceIndex(
         product_id=product_id,
@@ -95,8 +110,10 @@ def compute_price_index(
         c2c_used_min=c2c_used_min,
         c2c_used_median=c2c_used_median,
         b2c_min=b2c_min,
+        reference_market_price=reference_market_price,
+        reference_price_count=len(reference_values),
         new_price=new_price,
         lowest_available_price=lowest_available_price,
         buy_offer_price=buy_offer_price,
-        confidence_score=_confidence(c2c_used_count, b2c_min, new_price),
+        confidence_score=_confidence(c2c_used_count, b2c_min, new_price, reference_market_price),
     )

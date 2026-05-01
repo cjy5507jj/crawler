@@ -9,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.adapters.market_price import MarketPriceObservation
+from src.domains.consumer.normalization import infer_consumer_product
 
 _URL = "https://usedking.xyz/iphone/"
 
@@ -31,6 +32,26 @@ def _storage_gb(value: str) -> int | None:
     return None
 
 
+def _usedking_iphone_title(model: str, storage_gb: int | None) -> str:
+    text = model.lower().replace("iphone", "")
+    suffix = ""
+    for raw, normalized in (
+        ("promax", "pro max"),
+        ("pro", "pro"),
+        ("plus", "plus"),
+        ("mini", "mini"),
+        ("e", "e"),
+    ):
+        if raw in text:
+            suffix = normalized
+            text = text.replace(raw, "")
+            break
+    generation = re.sub(r"[^0-9]", "", text)
+    storage = "1TB" if storage_gb == 1024 else "2TB" if storage_gb == 2048 else f"{storage_gb}GB" if storage_gb else None
+    bits = ["iphone", generation, suffix, storage]
+    return " ".join(b for b in bits if b)
+
+
 def parse_iphone_table(html: str, *, model: str | None = None, days: str | None = None, url: str = _URL) -> list[MarketPriceObservation]:
     soup = BeautifulSoup(html, "lxml")
     observations: list[MarketPriceObservation] = []
@@ -40,13 +61,17 @@ def parse_iphone_table(html: str, *, model: str | None = None, days: str | None 
         if len(cells) < 6 or not cells[0].isdigit():
             continue
         price = _to_int(cells[3])
+        storage = _storage_gb(cells[2])
+        norm = infer_consumer_product(_usedking_iphone_title(cells[1], storage))
         observations.append(
             MarketPriceObservation(
                 source="usedking_iphone",
                 observation_id=f"{cells[1]}:{cells[2]}:{cells[3]}:{cells[4]}:{cells[5]}",
+                domain=norm.domain if norm else None,
                 category="iphone",
                 model=cells[1],
-                storage_gb=_storage_gb(cells[2]),
+                storage_gb=storage,
+                canonical_key=norm.canonical_key if norm else None,
                 price=price,
                 price_type="transaction_sample",
                 sample_window=days,

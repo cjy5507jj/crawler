@@ -134,6 +134,34 @@ def normalize_consumer_product(category: str, name: str) -> ConsumerNormalized:
     )
 
 
+def infer_consumer_product(name: str, categories: tuple[str, ...] | None = None) -> ConsumerNormalized | None:
+    """Infer the most specific consumer identity without source-specific category branching."""
+    candidates = categories or ("iphone", "galaxy", "macbook", "laptop", "tv", "appliance")
+    normalized = [normalize_consumer_product(category, name) for category in candidates]
+    with_keys = [n for n in normalized if n.canonical_key]
+    if with_keys:
+        return max(with_keys, key=_consumer_specificity_score)
+    with_model = [n for n in normalized if n.model or n.model_number or n.family]
+    if with_model:
+        return max(with_model, key=_consumer_specificity_score)
+    return None
+
+
+def _consumer_specificity_score(norm: ConsumerNormalized) -> int:
+    attrs = (
+        norm.brand,
+        norm.model,
+        norm.model_number,
+        norm.family,
+        norm.storage_gb,
+        norm.ram_gb,
+        norm.screen_size,
+        norm.carrier,
+        norm.battery_health,
+    )
+    return sum(1 for value in attrs if value is not None)
+
+
 def _normalize_iphone(category: str, text: str) -> ConsumerNormalized:
     m = re.search(r"(?:iphone|아이폰)\s?(1[1-9]|\d)(?:\s|-)?(pro\s?max|프로\s?맥스|pro|프로|plus|플러스|mini|미니|e)?", text, re.I)
     model = None

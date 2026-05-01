@@ -20,6 +20,7 @@ def test_joongna_price_parses_aggregate_and_samples() -> None:
     assert observations[0].min_price == 580_000
     assert observations[0].max_price == 720_000
     assert observations[1].price_type == "listing_sample"
+    assert observations[1].canonical_key == "phone:apple:iphone-15:128gb"
     assert observations[1].price == 610_000
     assert observations[1].url == "https://web.joongna.com/product/123"
 
@@ -41,6 +42,7 @@ def test_cetizen_price_parses_model_storage_rows() -> None:
     assert observations[0].source == "cetizen_price"
     assert observations[0].model == "아이폰15프로"
     assert observations[0].storage_gb == 128
+    assert observations[0].canonical_key == "phone:apple:iphone-15-pro:128gb"
     assert observations[0].avg_price == 712_000
     assert observations[0].release_date == "2023-10-13"
 
@@ -59,6 +61,7 @@ def test_usedking_iphone_parses_transaction_table_and_empty_state() -> None:
     assert observations[0].source == "usedking_iphone"
     assert observations[0].observation_id == "15PRO:1TB:900,000:아이폰15프로 1TB:2026-05-01"
     assert observations[0].storage_gb == 1024
+    assert observations[0].canonical_key == "phone:apple:iphone-15-pro:1024gb"
     assert observations[0].price == 900_000
     assert observations[0].sample_window == "30days"
     assert parse_iphone_table("최근 30days 간 거래가 없습니다 !!! 16PRO") == []

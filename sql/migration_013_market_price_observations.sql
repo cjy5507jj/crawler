@@ -6,6 +6,7 @@ create table if not exists market_price_observations (
   observation_id text not null,
   keyword text,
   brand text,
+  domain text,
   category text,
   model text,
   storage_gb integer,

@@ -9,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.adapters.market_price import MarketPriceObservation
+from src.domains.consumer.normalization import infer_consumer_product
 
 _BASE = "https://web.joongna.com"
 _WON_RE = re.compile(r"([0-9][0-9,]*)\s*원")
@@ -60,11 +61,18 @@ def parse_search_price(html: str, *, keyword: str, url: str | None = None) -> li
         m_price = _WON_RE.search(card_text)
         price = _to_int(m_price.group(1)) if m_price else None
         title = card_text[: m_price.start()].strip() if m_price else card_text
+        norm = infer_consumer_product(title)
         observations.append(
             MarketPriceObservation(
                 source="joongna_price",
                 observation_id=f"{keyword}:product:{m_id.group(1)}",
                 keyword=keyword,
+                brand=norm.brand if norm else None,
+                domain=norm.domain if norm else None,
+                category=norm.category if norm else None,
+                model=norm.model if norm else None,
+                storage_gb=norm.storage_gb if norm else None,
+                canonical_key=norm.canonical_key if norm else None,
                 price=price,
                 price_type="listing_sample",
                 url=f"{_BASE}{href}",

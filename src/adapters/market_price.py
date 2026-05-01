@@ -9,9 +9,11 @@ class MarketPriceObservation:
     observation_id: str
     keyword: str | None = None
     brand: str | None = None
+    domain: str | None = None
     category: str | None = None
     model: str | None = None
     storage_gb: int | None = None
+    canonical_key: str | None = None
     price: int | None = None
     avg_price: int | None = None
     min_price: int | None = None

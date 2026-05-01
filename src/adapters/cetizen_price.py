@@ -8,6 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.adapters.market_price import MarketPriceObservation
+from src.domains.consumer.normalization import infer_consumer_product
 
 _URL = "https://price.cetizen.com/price.php"
 _ROW_RE = re.compile(
@@ -47,12 +48,17 @@ def parse_price_table(html: str, *, url: str = _URL) -> list[MarketPriceObservat
             storage = _storage(storage_raw)
             if price is None or storage is None:
                 continue
+            norm = infer_consumer_product(f"{model} {storage}GB")
             observations.append(
                 MarketPriceObservation(
                     source="cetizen_price",
                     observation_id=f"{model}:{storage}gb:{idx}",
+                    brand=norm.brand if norm else None,
+                    domain=norm.domain if norm else None,
+                    category=norm.category if norm else None,
                     model=model,
                     storage_gb=storage,
+                    canonical_key=norm.canonical_key if norm else None,
                     avg_price=price,
                     price_type="completed_safe_trade_average",
                     release_date=match.group("release"),

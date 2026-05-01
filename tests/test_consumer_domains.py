@@ -1,6 +1,6 @@
 from src.adapters.base import UsedListing
 from src.domains.consumer.matching import ConsumerProductCandidate, find_best_consumer_candidate
-from src.domains.consumer.normalization import normalize_consumer_product
+from src.domains.consumer.normalization import infer_consumer_product, normalize_consumer_product
 
 
 def test_normalize_iphone_model_storage_and_carrier() -> None:
@@ -22,6 +22,15 @@ def test_normalize_iphone_korean_shorthand_battery_and_repair_flags() -> None:
     assert norm.carrier == "unlocked"
     assert norm.battery_health == 87
     assert "third_party_repair" in norm.condition_flags
+    assert norm.canonical_key == "phone:apple:iphone-15-pro-max:1024gb"
+
+
+def test_infer_consumer_product_picks_phone_identity_without_category_hint() -> None:
+    norm = infer_consumer_product("아이폰15프맥 1TB 자급제")
+
+    assert norm is not None
+    assert norm.domain == "phone"
+    assert norm.category == "iphone"
     assert norm.canonical_key == "phone:apple:iphone-15-pro-max:1024gb"
 
 
