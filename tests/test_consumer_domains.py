@@ -14,6 +14,17 @@ def test_normalize_iphone_model_storage_and_carrier() -> None:
     assert norm.canonical_key == "phone:apple:iphone-15-pro-max:256gb"
 
 
+def test_normalize_iphone_korean_shorthand_battery_and_repair_flags() -> None:
+    norm = normalize_consumer_product("iphone", "아이폰15프맥 1TB 자급제 배터리효율 87% 사설수리")
+
+    assert norm.model == "iphone 15 pro max"
+    assert norm.storage_gb == 1024
+    assert norm.carrier == "unlocked"
+    assert norm.battery_health == 87
+    assert "third_party_repair" in norm.condition_flags
+    assert norm.canonical_key == "phone:apple:iphone-15-pro-max:1024gb"
+
+
 def test_normalize_galaxy_model_storage_and_condition() -> None:
     norm = normalize_consumer_product("galaxy", "갤럭시 S24 울트라 512GB 액정파손")
 
@@ -22,6 +33,24 @@ def test_normalize_galaxy_model_storage_and_condition() -> None:
     assert norm.model == "galaxy s24 ultra"
     assert norm.storage_gb == 512
     assert norm.condition_flags == ["damaged_display"]
+
+
+def test_normalize_galaxy_shorthand_fold_and_carrier() -> None:
+    norm = normalize_consumer_product("galaxy", "S24U 512g KT 정상해지")
+
+    assert norm.model == "galaxy s24 ultra"
+    assert norm.storage_gb == 512
+    assert norm.carrier == "kt"
+
+    fold = normalize_consumer_product("galaxy", "갤럭시 폴드6 256GB 후면파손")
+    assert fold.model == "galaxy zfold6"
+    assert fold.storage_gb == 256
+    assert "damaged_body" in fold.condition_flags
+    assert "damaged_display" not in fold.condition_flags
+
+    camera = normalize_consumer_product("galaxy", "갤럭시 S24 256GB 카메라 파손")
+    assert "damaged_body" in camera.condition_flags
+    assert "damaged_display" not in camera.condition_flags
 
 
 def test_normalize_macbook_chip_ram_storage() -> None:

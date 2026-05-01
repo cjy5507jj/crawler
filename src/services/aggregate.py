@@ -63,6 +63,8 @@ _USED_PRICE_FLOORS: dict[str, int] = {
     "cooler": 3_000,
     "case": 10_000,
     "monitor": 20_000,
+    "iphone": 30_000,
+    "galaxy": 30_000,
 }
 
 # A used single component priced far above current new price is usually a full

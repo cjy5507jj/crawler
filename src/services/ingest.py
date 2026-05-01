@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Iterable, Protocol
 
+from src.adapters.market_price import MarketPriceObservation
 from src.adapters.base import SourceAdapter, UsedListing
 from src.crawlers.danawa import RawProduct, crawl
 from src.domains.consumer.matching import (
@@ -188,6 +191,23 @@ def _insert_used_snapshot(
             "shop_name": None,
         }
     ).execute()
+
+
+def upsert_market_price_observations(
+    db: _SupabaseLike,
+    observations: Iterable[MarketPriceObservation],
+) -> dict:
+    """Persist source-provided reference prices without mixing them into C2C stats."""
+    rows = []
+    observed_at = datetime.now(timezone.utc).isoformat()
+    for observation in observations:
+        payload = asdict(observation)
+        payload["observed_at"] = observed_at
+        rows.append({k: v for k, v in payload.items() if v is not None})
+    if not rows:
+        return {"observations": 0}
+    db.table("market_price_observations").upsert(rows, on_conflict="source,observation_id").execute()
+    return {"observations": len(rows)}
 
 
 def _fetch_consumer_candidates(

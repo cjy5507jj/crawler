@@ -28,6 +28,7 @@ class ConsumerNormalized:
     resolution: str | None = None
     capacity_l: int | None = None
     carrier: str | None = None
+    battery_health: int | None = None
     condition_flags: list[str] = field(default_factory=list)
     canonical_key: str | None = None
     specs: dict = field(default_factory=dict)
@@ -35,16 +36,25 @@ class ConsumerNormalized:
 
 def _norm_text(value: str) -> str:
     text = value.lower()
+    text = re.sub(r"(?i)(iphone|아이폰)\s*(\d{1,2})\s*(프로맥스|프맥|promax|pro\s*max)", r"\1 \2 pro max", text)
+    text = re.sub(r"(?i)(iphone|아이폰)\s*(\d{1,2})\s*(프로|pro)", r"\1 \2 pro", text)
+    text = re.sub(r"(?i)(iphone|아이폰)\s*(\d{1,2})\s*(플러스|plus)", r"\1 \2 plus", text)
+    text = re.sub(r"(?i)(s\d{2})\s*u\b", r"\1 ultra", text)
     text = text.replace("프로맥스", "프로 맥스")
+    text = text.replace("프맥", "프로 맥스")
     text = text.replace("pro맥스", "pro max")
     text = text.replace("울트라", "ultra")
     text = text.replace("플러스", "plus")
+    text = text.replace("폴드", "fold")
+    text = text.replace("플립", "flip")
+    text = text.replace("기가", "gb")
+    text = text.replace("테라", "tb")
     text = re.sub(r"[()\[\],/]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
 def _storage_gb(text: str) -> int | None:
-    m = re.search(r"\b(128|256|512)\s?(?:gb|기가)\b", text, re.I)
+    m = re.search(r"\b(32|64|128|256|512)\s?(?:gb|기가|g)\b", text, re.I)
     if m:
         return int(m.group(1))
     if re.search(r"\b2\s?(?:tb|테라)\b", text, re.I):
@@ -64,13 +74,41 @@ def _ram_gb(text: str) -> int | None:
 
 def _condition_flags(text: str) -> list[str]:
     flags: list[str] = []
-    if any(tok in text for tok in ("액정파손", "액정 파손", "화면파손", "파손")):
+    if any(tok in text for tok in ("후면파손", "후면 파손", "뒷판파손", "뒷판 파손", "카메라파손", "카메라 파손", "외관파손", "외관 파손")):
+        flags.append("damaged_body")
+    if any(tok in text for tok in ("액정파손", "액정 파손", "화면파손", "화면 파손")):
+        flags.append("damaged_display")
+    elif "파손" in text and "damaged_body" not in flags:
         flags.append("damaged_display")
     if any(tok in text for tok in ("부품용", "고장", "침수")):
         flags.append("parts_only")
     if "미개봉" in text:
         flags.append("sealed")
+    if any(tok in text for tok in ("리퍼", "교환폰")):
+        flags.append("refurbished")
+    if "사설수리" in text or "사설 수리" in text:
+        flags.append("third_party_repair")
     return flags
+
+
+def _battery_health(text: str) -> int | None:
+    m = re.search(r"(?:배터리|배터리효율|효율|성능)\s*(?:성능)?\s*(\d{2,3})\s?%", text)
+    if not m:
+        return None
+    value = int(m.group(1))
+    return value if 50 <= value <= 100 else None
+
+
+def _phone_carrier(text: str) -> str | None:
+    if any(tok in text for tok in ("자급제", "언락", "unlocked", "공기계")):
+        return "unlocked"
+    if any(tok in text for tok in ("skt", "sk ", "에스케이")):
+        return "skt"
+    if "kt" in text or "케이티" in text:
+        return "kt"
+    if any(tok in text for tok in ("lgu", "lg u", "유플러스", "u+")):
+        return "lgu"
+    return None
 
 
 def normalize_consumer_product(category: str, name: str) -> ConsumerNormalized:
@@ -97,14 +135,15 @@ def normalize_consumer_product(category: str, name: str) -> ConsumerNormalized:
 
 
 def _normalize_iphone(category: str, text: str) -> ConsumerNormalized:
-    m = re.search(r"(?:iphone|아이폰)\s?(1[1-9]|\d)(?:\s|-)?(pro\s?max|프로\s?맥스|pro|프로|plus|플러스)?", text, re.I)
+    m = re.search(r"(?:iphone|아이폰)\s?(1[1-9]|\d)(?:\s|-)?(pro\s?max|프로\s?맥스|pro|프로|plus|플러스|mini|미니|e)?", text, re.I)
     model = None
     if m:
-        suffix = (m.group(2) or "").replace("프로", "pro").replace("맥스", "max").replace("플러스", "plus")
+        suffix = (m.group(2) or "").replace("프로", "pro").replace("맥스", "max").replace("플러스", "plus").replace("미니", "mini")
         suffix = re.sub(r"\s+", " ", suffix).strip()
         model = f"iphone {m.group(1)}{(' ' + suffix) if suffix else ''}"
     storage = _storage_gb(text)
-    carrier = "unlocked" if "자급제" in text else None
+    carrier = _phone_carrier(text)
+    battery = _battery_health(text)
     canonical = _phone_key("apple", model, storage)
     return ConsumerNormalized(
         domain="phone",
@@ -113,20 +152,23 @@ def _normalize_iphone(category: str, text: str) -> ConsumerNormalized:
         model=model,
         storage_gb=storage,
         carrier=carrier,
+        battery_health=battery,
         condition_flags=_condition_flags(text),
         canonical_key=canonical,
-        specs={"model": model, "storage_gb": storage, "carrier": carrier},
+        specs={"model": model, "storage_gb": storage, "carrier": carrier, "battery_health": battery},
     )
 
 
 def _normalize_galaxy(category: str, text: str) -> ConsumerNormalized:
-    m = re.search(r"(?:galaxy|갤럭시)\s?(s\s?\d{2}|z\s?fold\s?\d|z\s?flip\s?\d)(?:\s|-)?(ultra|plus|\+)?", text, re.I)
+    m = re.search(r"(?:galaxy|갤럭시)?\s?(s\s?\d{2}|z\s?fold\s?\d|z\s?flip\s?\d|fold\s?\d|flip\s?\d)(?:\s|-)?(ultra|plus|\+)?", text, re.I)
     model = None
     if m:
-        base = re.sub(r"\s+", "", m.group(1)).replace("s", "s")
+        base = re.sub(r"\s+", "", m.group(1)).replace("fold", "zfold").replace("flip", "zflip")
         suffix = (m.group(2) or "").replace("+", "plus")
         model = f"galaxy {base}{(' ' + suffix) if suffix else ''}"
     storage = _storage_gb(text)
+    carrier = _phone_carrier(text)
+    battery = _battery_health(text)
     canonical = _phone_key("samsung", model, storage)
     return ConsumerNormalized(
         domain="phone",
@@ -134,10 +176,11 @@ def _normalize_galaxy(category: str, text: str) -> ConsumerNormalized:
         brand="samsung",
         model=model,
         storage_gb=storage,
-        carrier="unlocked" if "자급제" in text else None,
+        carrier=carrier,
+        battery_health=battery,
         condition_flags=_condition_flags(text),
         canonical_key=canonical,
-        specs={"model": model, "storage_gb": storage},
+        specs={"model": model, "storage_gb": storage, "carrier": carrier, "battery_health": battery},
     )
 
 
