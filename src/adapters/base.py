@@ -11,6 +11,30 @@ STATUS_SOLD = "sold"
 STATUS_UNKNOWN = "unknown"
 
 
+def parse_price_int(value: object) -> int | None:
+    """Return an integer price from adapter payload values, if one is present.
+
+    Source payloads are inconsistent: some APIs return integers, some return
+    numeric strings, and some include display punctuation. Keep the normalized
+    integer here while adapters continue carrying the original display value in
+    ``price_raw``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    try:
+        return int(text)
+    except ValueError:
+        digits = "".join(c for c in text if c.isdigit())
+        return int(digits) if digits else None
+
+
 @dataclass
 class UsedListing:
     source: str

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Iterable, Protocol
+from typing import Any, Iterable, Protocol
 
 from src.adapters.market_price import MarketPriceObservation
 from src.adapters.base import SourceAdapter, UsedListing
@@ -381,6 +381,49 @@ def _collect_listings(
         return []
 
 
+def _listing_match_context(
+    category: str,
+    listing: UsedListing,
+    *,
+    use_consumer_matcher: bool,
+) -> tuple[Any | None, str, dict]:
+    if use_consumer_matcher:
+        consumer_norm = normalize_consumer_product(category, listing.title)
+        if consumer_norm:
+            return consumer_norm, consumer_norm.domain, consumer_norm.specs
+        return None, "pc_parts", {}
+    return None, "pc_parts", build_pc_identity(category, listing.title).specs
+
+
+def _record_unmatched_listing(
+    db: _SupabaseLike,
+    listing: UsedListing,
+    category: str,
+    score: float | None,
+    reasons: list[str] | None,
+    domain: str,
+    parsed_specs: dict,
+) -> None:
+    _upsert_used_listing(db, listing, category, None, score, reasons, domain, parsed_specs)
+
+
+def _record_matched_listing(
+    db: _SupabaseLike,
+    listing: UsedListing,
+    category: str,
+    matched_product_id: str,
+    score: float | None,
+    reasons: list[str] | None,
+    domain: str,
+    parsed_specs: dict,
+) -> int:
+    _upsert_used_listing(
+        db, listing, category, matched_product_id, score, reasons, domain, parsed_specs
+    )
+    _insert_used_snapshot(db, matched_product_id, listing)
+    return 1 if listing.price is not None else 0
+
+
 def run_used(
     db: _SupabaseLike,
     adapter: SourceAdapter,
@@ -405,34 +448,39 @@ def run_used(
             excluded += 1
             continue
 
-        consumer_norm = normalize_consumer_product(category, listing.title) if use_consumer_matcher else None
-        domain = consumer_norm.domain if consumer_norm else "pc_parts"
-        parsed_specs = consumer_norm.specs if consumer_norm else {}
-        if not use_consumer_matcher:
-            parsed_specs = build_pc_identity(category, listing.title).specs
+        consumer_norm, domain, parsed_specs = _listing_match_context(
+            category, listing, use_consumer_matcher=use_consumer_matcher
+        )
 
         if use_consumer_matcher:
             _ensure_consumer_candidate(db, category, consumer_norm, candidates)
             result = find_best_consumer_candidate(listing, candidates, category=category)
             if result is None:
                 unmatched += 1
-                _upsert_used_listing(db, listing, category, None, None, None, domain, parsed_specs)
+                _record_unmatched_listing(db, listing, category, None, None, domain, parsed_specs)
                 continue
             if result.is_match:
                 matched += 1
-                _upsert_used_listing(
-                    db, listing, category, result.candidate.product_id, result.score,
-                    result.reasons, domain, parsed_specs
+                saved_snapshots += _record_matched_listing(
+                    db,
+                    listing,
+                    category,
+                    result.candidate.product_id,
+                    result.score,
+                    result.reasons,
+                    domain,
+                    parsed_specs,
                 )
-                _insert_used_snapshot(db, result.candidate.product_id, listing)
-                if listing.price is not None:
-                    saved_snapshots += 1
             elif result.is_pending:
                 pending += 1
-                _upsert_used_listing(db, listing, category, None, result.score, result.reasons, domain, parsed_specs)
+                _record_unmatched_listing(
+                    db, listing, category, result.score, result.reasons, domain, parsed_specs
+                )
             else:
                 unmatched += 1
-                _upsert_used_listing(db, listing, category, None, result.score, result.reasons, domain, parsed_specs)
+                _record_unmatched_listing(
+                    db, listing, category, result.score, result.reasons, domain, parsed_specs
+                )
             continue
 
         # If brand is detectable, restrict the candidate pool — large speed win
@@ -450,19 +498,22 @@ def run_used(
             if auto_candidate is not None:
                 matched += 1
                 reasons = ["auto:pc_identity"]
-                _upsert_used_listing(
-                    db, listing, category, auto_candidate.product_id, 1.0, reasons, domain, parsed_specs
+                saved_snapshots += _record_matched_listing(
+                    db,
+                    listing,
+                    category,
+                    auto_candidate.product_id,
+                    1.0,
+                    reasons,
+                    domain,
+                    parsed_specs,
                 )
-                _insert_used_snapshot(db, auto_candidate.product_id, listing)
-                if listing.price is not None:
-                    saved_snapshots += 1
                 continue
             unmatched += 1
-            _upsert_used_listing(
+            _record_unmatched_listing(
                 db,
                 listing,
                 category,
-                None,
                 None if result is None else result.score,
                 None if result is None else result.reasons,
                 domain,
@@ -472,18 +523,26 @@ def run_used(
 
         if result.is_match and result.candidate.product_id:
             matched += 1
-            _upsert_used_listing(
-                db, listing, category, result.candidate.product_id, result.score, result.reasons, domain, parsed_specs
+            saved_snapshots += _record_matched_listing(
+                db,
+                listing,
+                category,
+                result.candidate.product_id,
+                result.score,
+                result.reasons,
+                domain,
+                parsed_specs,
             )
-            _insert_used_snapshot(db, result.candidate.product_id, listing)
-            if listing.price is not None:
-                saved_snapshots += 1
         elif result.is_pending:
             pending += 1
-            _upsert_used_listing(db, listing, category, None, result.score, result.reasons, domain, parsed_specs)
+            _record_unmatched_listing(
+                db, listing, category, result.score, result.reasons, domain, parsed_specs
+            )
         else:
             unmatched += 1
-            _upsert_used_listing(db, listing, category, None, result.score, result.reasons, domain, parsed_specs)
+            _record_unmatched_listing(
+                db, listing, category, result.score, result.reasons, domain, parsed_specs
+            )
 
     print(
         f"Done — matched: {matched}, pending: {pending}, "

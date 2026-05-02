@@ -121,6 +121,37 @@ def _sanity_filter(prices: list[int]) -> list[int]:
     return [p for p in prices if lo <= p <= hi]
 
 
+def _category_floor(floors: dict[str, int], category: str) -> int | None:
+    return floors.get(category.lower()) if category else None
+
+
+def _new_price_meets_floor(category: str, new_price: int | None) -> bool:
+    floor = _category_floor(_NEW_PRICE_FLOORS, category)
+    return new_price is not None and (floor is None or new_price >= floor)
+
+
+def _usable_new_price(category: str, new_price: int | None) -> int | None:
+    floor = _category_floor(_NEW_PRICE_FLOORS, category)
+    if new_price is not None and floor is not None and new_price < floor:
+        return None
+    return new_price
+
+
+def _filter_used_prices(category: str, prices: list[int], new_price: int | None) -> list[int]:
+    used_floor = _category_floor(_USED_PRICE_FLOORS, category)
+    new_floor = _category_floor(_NEW_PRICE_FLOORS, category)
+    new_price_is_normal = _new_price_meets_floor(category, new_price)
+
+    if used_floor is not None and (
+        new_price is None or new_floor is None or new_price_is_normal
+    ):
+        prices = [p for p in prices if p >= used_floor]
+    if new_price_is_normal:
+        max_used_price = int(new_price * _USED_TO_NEW_MAX_RATIO)
+        prices = [p for p in prices if p <= max_used_price]
+    return _sanity_filter(prices)
+
+
 @dataclass
 class _Snapshot:
     price: int
@@ -137,24 +168,15 @@ def compute_stats(
 ) -> MarketStats:
     snaps = sorted(used_snapshots, key=lambda s: s.snapshot_at, reverse=True)
     raw_prices = [s.price for s in snaps if s.price is not None and s.price > 0]
-    used_floor = _USED_PRICE_FLOORS.get(category.lower()) if category else None
-    new_floor = _NEW_PRICE_FLOORS.get(category.lower()) if category else None
-    if used_floor is not None and (new_price is None or new_floor is None or new_price >= new_floor):
-        raw_prices = [p for p in raw_prices if p >= used_floor]
-    if new_price is not None and new_floor is not None and new_price >= new_floor:
-        max_used_price = int(new_price * _USED_TO_NEW_MAX_RATIO)
-        raw_prices = [p for p in raw_prices if p <= max_used_price]
     # Drop sale-glitch / placeholder outliers using a median-deviation filter
     # before computing min/max/mean/ratio. The "latest" still references the
     # most recent raw snapshot so the user can see what was actually crawled.
-    prices = _sanity_filter(raw_prices)
+    prices = _filter_used_prices(category, raw_prices, new_price)
 
     # Clamp implausibly low Danawa snapshots: a 4,500원 RAM "new" price is
     # almost certainly a discontinued/EOL listing and produces nonsense ratios.
     # Drop only the new-side; used stats remain.
-    floor = _NEW_PRICE_FLOORS.get(category.lower()) if category else None
-    if new_price is not None and floor is not None and new_price < floor:
-        new_price = None
+    new_price = _usable_new_price(category, new_price)
 
     if not prices:
         return MarketStats(

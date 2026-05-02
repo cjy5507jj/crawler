@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
 from src.services.aggregate import (
-    MarketStats,
     _Snapshot,
     _fetch_all_used_snapshots_grouped,
     _trimmed_mean,
@@ -173,6 +172,25 @@ def test_compute_stats_drops_implausible_low_used_price_when_new_price_is_normal
     assert stats.used_count == 2
     assert stats.used_min == 750_000
     assert stats.used_median == 765_000
+
+
+def test_compute_stats_keeps_latest_raw_snapshot_when_latest_price_is_filtered() -> None:
+    snaps = [
+        _Snapshot(price=2_000, snapshot_at="2026-04-26T12:00:00Z"),
+        _Snapshot(price=750_000, snapshot_at="2026-04-26T11:00:00Z"),
+        _Snapshot(price=780_000, snapshot_at="2026-04-26T10:00:00Z"),
+    ]
+    stats = compute_stats(
+        product_id="p-1",
+        category="gpu",
+        used_snapshots=snaps,
+        new_price=900_000,
+        window_days=30,
+    )
+    assert stats.used_count == 2
+    assert stats.used_median == 765_000
+    assert stats.used_latest == 2_000
+    assert stats.used_latest_at == "2026-04-26T12:00:00Z"
 
 
 def test_compute_stats_drops_used_price_far_above_normal_new_price() -> None:

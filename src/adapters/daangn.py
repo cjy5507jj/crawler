@@ -27,9 +27,9 @@ from src.adapters.base import (
     STATUS_RESERVED,
     STATUS_SELLING,
     STATUS_SOLD,
-    STATUS_UNKNOWN,
     SourceAdapter,
     UsedListing,
+    parse_price_int,
 )
 
 _BASE = "https://www.daangn.com"
@@ -69,10 +69,7 @@ def parse_list(html: str) -> list[UsedListing]:
         pm = _PRICE_RE.search(full_text)
         if pm:
             price_raw = pm.group(0)
-            try:
-                price = int(pm.group(1).replace(",", ""))
-            except ValueError:
-                price = None
+            price = parse_price_int(pm.group(1))
 
         # Title heuristic: pick the LONGEST child whose text is purely the
         # product name — no badge, no price, no "·", no "끌올", and not a

@@ -22,6 +22,7 @@ from src.adapters.base import (
     STATUS_UNKNOWN,
     SourceAdapter,
     UsedListing,
+    parse_price_int,
 )
 
 _API = "https://api.bunjang.co.kr/api/1/find_v2.json"
@@ -46,21 +47,6 @@ _STATUS_MAP = {
 }
 
 
-def _to_int(value) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    s = str(value).strip()
-    if not s:
-        return None
-    try:
-        return int(s)
-    except ValueError:
-        digits = "".join(c for c in s if c.isdigit())
-        return int(digits) if digits else None
-
-
 def parse_response(payload: str | dict) -> list[UsedListing]:
     data = json.loads(payload) if isinstance(payload, str) else payload
     out: list[UsedListing] = []
@@ -71,7 +57,8 @@ def parse_response(payload: str | dict) -> list[UsedListing]:
         name = (item.get("name") or "").strip()
         if not pid or not name:
             continue
-        price = _to_int(item.get("price"))
+        raw_price = item.get("price")
+        price = parse_price_int(raw_price)
         status = _STATUS_MAP.get(str(item.get("status")), STATUS_UNKNOWN)
         location = (item.get("location") or "").strip() or None
         out.append(
@@ -80,7 +67,7 @@ def parse_response(payload: str | dict) -> list[UsedListing]:
                 listing_id=pid,
                 title=name,
                 price=price,
-                price_raw=str(item.get("price")) if item.get("price") is not None else None,
+                price_raw=str(raw_price) if raw_price is not None else None,
                 url=f"{_WEB_PRODUCT}{pid}",
                 status=status,
                 location=location,

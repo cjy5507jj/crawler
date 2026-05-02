@@ -26,9 +26,9 @@ from bs4 import BeautifulSoup
 
 from src.adapters.base import (
     STATUS_SELLING,
-    STATUS_UNKNOWN,
     SourceAdapter,
     UsedListing,
+    parse_price_int,
 )
 
 _BASE = "https://web.joongna.com"
@@ -46,10 +46,7 @@ def _parse_anchor_text(text: str) -> tuple[str, int | None, str | None]:
     for token in parts[1:]:
         if _PRICE_TOKEN_RE.match(token):
             price_raw = token
-            try:
-                price = int(token.replace(",", ""))
-            except ValueError:
-                price = None
+            price = parse_price_int(token)
             break
     return title, price, price_raw
 

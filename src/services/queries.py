@@ -76,6 +76,37 @@ def _good_query(model_name: str) -> bool:
     return True
 
 
+def _seed_queries_for_category(category: str) -> list[str]:
+    return list(
+        query_seeds_for_category(category) or _CATEGORY_SEED_QUERIES.get(category, ())
+    )
+
+
+def _combined_brand_query(brand: str, model_name: str) -> str | None:
+    if not brand:
+        return None
+    if model_name.lower().startswith(brand.lower()):
+        return None
+
+    combined = f"{brand} {model_name}"
+    if len(combined) > _TOO_LONG:
+        return None
+    return combined
+
+
+def _add_model_queries(counter: Counter[str], row: dict) -> None:
+    model_name = (row.get("model_name") or "").strip()
+    if not _good_query(model_name):
+        return
+
+    counter[model_name] += 1
+
+    brand = (row.get("brand") or "").strip()
+    combined = _combined_brand_query(brand, model_name)
+    if combined:
+        counter[combined] += 1
+
+
 def derive_queries(
     db: _SupabaseLike,
     *,
@@ -105,23 +136,10 @@ def derive_queries(
         .data
     )
     counter: Counter[str] = Counter()
-    for r in rows:
-        mn = (r.get("model_name") or "").strip()
-        if not _good_query(mn):
-            continue
-        counter[mn] += 1
+    for row in rows:
+        _add_model_queries(counter, row)
 
-        brand = (r.get("brand") or "").strip()
-        if not brand:
-            continue
-        if mn.lower().startswith(brand.lower()):
-            continue
-        combined = f"{brand} {mn}"
-        if len(combined) > _TOO_LONG:
-            continue
-        counter[combined] += 1
-
-    seed = list(query_seeds_for_category(category) or _CATEGORY_SEED_QUERIES.get(category, ()))
+    seed = _seed_queries_for_category(category)
     seed_set = {s for s in seed}
     model_queries = [
         name for name, _ in counter.most_common() if name not in seed_set

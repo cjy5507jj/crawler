@@ -37,6 +37,7 @@ from src.adapters.base import (
     STATUS_UNKNOWN,
     SourceAdapter,
     UsedListing,
+    parse_price_int,
 )
 
 
@@ -54,21 +55,6 @@ _DEFAULT_QUERY_VARIANTS: tuple[str, ...] = ("", "판매", "직거래")
 
 def _strip_tags(text: str) -> str:
     return _TAG_RE.sub("", text or "").strip()
-
-
-def _to_int(value) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    s = str(value).strip()
-    if not s:
-        return None
-    try:
-        return int(s)
-    except ValueError:
-        digits = "".join(c for c in s if c.isdigit())
-        return int(digits) if digits else None
 
 
 def parse_response(
@@ -99,8 +85,8 @@ def parse_response(
             continue
 
         # lprice (최저가) preferred — represents what a buyer actually pays.
-        lprice = _to_int(item.get("lprice"))
-        hprice = _to_int(item.get("hprice"))
+        lprice = parse_price_int(item.get("lprice"))
+        hprice = parse_price_int(item.get("hprice"))
         price = lprice if lprice else hprice
         price_raw = str(item.get("lprice")) if item.get("lprice") else None
 
@@ -255,8 +241,12 @@ class NaverShopAdapter(SourceAdapter):
                     break
                 listings = parse_response(body, accept_types=self.accept_types)
                 # Dedup across variants — same listing may surface under multiple suffixes.
-                fresh = [l for l in listings if l.listing_id not in seen_listing_ids]
-                seen_listing_ids.update(l.listing_id for l in fresh)
+                fresh = [
+                    listing
+                    for listing in listings
+                    if listing.listing_id not in seen_listing_ids
+                ]
+                seen_listing_ids.update(listing.listing_id for listing in fresh)
                 out.extend(fresh)
                 print(
                     f"  [naver_shop] '{variant}' start={start}: "
