@@ -206,7 +206,26 @@ def upsert_market_price_observations(
         rows.append({k: v for k, v in payload.items() if v is not None})
     if not rows:
         return {"observations": 0}
-    db.table("market_price_observations").upsert(rows, on_conflict="source,observation_id").execute()
+    unsupported_columns: set[str] = set()
+    while True:
+        payload_rows = [
+            {k: v for k, v in row.items() if k not in unsupported_columns}
+            for row in rows
+        ]
+        try:
+            db.table("market_price_observations").upsert(
+                payload_rows, on_conflict="source,observation_id"
+            ).execute()
+            break
+        except Exception as exc:
+            message = str(exc)
+            missing = next(
+                (col for col in ("canonical_key", "domain") if col in message),
+                None,
+            )
+            if missing is None or missing in unsupported_columns:
+                raise
+            unsupported_columns.add(missing)
     return {"observations": len(rows)}
 
 
