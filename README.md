@@ -38,7 +38,7 @@ Supabase 대시보드 SQL 에디터에 붙여넣고 Run:
 3. `sql/migration_002_vocabulary.sql` (brands / sku_lines / danawa_categories / unknown_vocab)
 4. `sql/migration_003_match_reasons.sql` (used_listings.match_reasons jsonb)
 5. `sql/migration_004_accessory_flag.sql` (products.is_accessory)
-6. `sql/migration_005_crawl_runs.sql` ~ `sql/migration_012_app_price_index_domains.sql` (운영 로그/시계열/watchlist/B2C 구분/app read model/도메인 확장 보강)
+6. `sql/migration_005_crawl_runs.sql` ~ `sql/migration_016_used_listing_observations.sql` (운영 로그/시계열/watchlist/B2C 구분/app read model/도메인 확장/날짜별 차트 view/중고 매물 관측 dedupe 보강)
 
 ### 4. 풀 파이프라인 한 방
 
@@ -76,8 +76,16 @@ python scripts/run_used.py daangn      --category gpu --queries "RTX 5070"
 # vocabulary만 재계산 (주 1회 추천)
 python scripts/discover_vocab.py
 
-# 시세만 재집계
+# 시세만 재집계 (기본: observation 우선 + snapshot fallback)
 python scripts/aggregate_stats.py --window-days 30
+
+# 중고 데이터 중복/소스 품질 audit
+python scripts/audit_used_data.py --sample-pages 20
+
+# observation backfill / shadow 비교 (집계 테이블에는 쓰지 않음)
+python scripts/backfill_used_observations.py --dry-run
+python scripts/compare_used_aggregation.py --category cpu --window-days 30
+python scripts/aggregate_stats.py --used-data-source hybrid --window-days 30
 ```
 
 ### 6. 테스트
@@ -118,9 +126,15 @@ pytest -q
 
 운영 로그는 `crawl_runs`에 기록되며, `run_all.py` 시작 시 6시간 이상 남아 있는 stale `running` row를 자동으로 `failed` 처리한다.
 
-앱/거래 시스템은 `sql/migration_012_app_price_index_domains.sql`의 `app_price_index` view를 read-only로 사용한다. 이 view는 `domain`, `canonical_key`, `specs`와 C2C 중고 중앙가/최저가, B2C 최저가, 신품가, 최저 노출가, C2B 매입 기준가(`used_median * 0.8`), confidence score를 한 row로 제공한다.
+앱/거래 시스템은 `sql/migration_014_app_price_index_reference_prices.sql`의 `app_price_index` view를 read-only로 사용한다. 이 view는 `domain`, `canonical_key`, `specs`와 C2C 중고 중앙가/최저가, B2C 최저가, 신품가, 최저 노출가, C2B 매입 기준가(`used_median * 0.8`), confidence score를 한 row로 제공한다.
 
 PC 부품은 다나와 상품명에서 `pc_parts:<category>:<brand>:<model/spec...>` 형태의 `canonical_key`를 동적으로 생성한다. 다나와에 아직 없는 신제품이 중고 매물에서 먼저 발견되어도 강한 식별 토큰이 있으면 `pc_auto` product로 자동 생성된다. 핸드폰/노트북/맥북/가전도 모델/용량/모델코드 기반 `canonical_key`로 자동 생성된다.
+
+날짜별 차트는 `product_market_daily_stats`와 `category_market_daily_stats` view를 사용한다. 두 view는 `product_market_stats_history`의 여러 실행 스냅샷을 `Asia/Seoul` 기준 `chart_date`로 묶고, 같은 날짜에 여러 번 실행된 상품은 가장 늦은 스냅샷만 노출한다.
+
+중고 매물은 `used_listings`를 canonical identity로 유지하고, `used_listing_observations`에 `source/listing_id/observed_date` 단위로 관측을 누적한다. migration 016 적용 후 같은 매물을 같은 KST 날짜에 반복 수집하면 `seen_count`만 증가하고, `price_snapshots`는 최초 관측/가격 변경/상태 변경 같은 이벤트에만 추가된다.
+
+`aggregate_stats.py`는 기본적으로 `--used-data-source hybrid`를 사용한다. 상품별 observation이 있으면 중복 제거된 관측값으로 집계하고, 아직 observation coverage가 없는 상품은 legacy `price_snapshots`로 fallback해 기존 커버리지를 유지한다.
 
 ---
 

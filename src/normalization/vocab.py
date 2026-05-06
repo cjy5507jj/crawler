@@ -23,6 +23,112 @@ _brands_cache: list[tuple[str, tuple[str, ...]]] | None = None
 _sku_lines_cache: dict[str, list[tuple[str, tuple[str, ...]]]] | None = None
 
 
+_UNSAFE_DYNAMIC_SKU_PARTS = {
+    "rtx",
+    "gtx",
+    "geforce",
+    "지포스",
+    "radeon",
+    "라데온",
+    "라이젠",
+    "ryzen",
+    "intel",
+    "인텔",
+}
+
+
+def _norm_alias(value: str) -> str:
+    return _catalog.normalize_text(value).replace(" ", "-")
+
+
+def _constant_brands() -> list[tuple[str, tuple[str, ...]]]:
+    return list(_catalog.BRAND_ALIASES.items())
+
+
+def _constant_sku_lines() -> dict[str, list[tuple[str, tuple[str, ...]]]]:
+    return {
+        cat: [(entry[0], tuple(entry)) for entry in entries]
+        for cat, entries in _catalog.SKU_LINE_TOKENS.items()
+    }
+
+
+def _merge_brands(rows: list[dict]) -> list[tuple[str, tuple[str, ...]]]:
+    merged = _constant_brands()
+    seen = {canonical for canonical, _ in merged}
+    for row in rows:
+        canonical = row["canonical"]
+        if canonical in seen:
+            continue
+        merged.append(
+            (
+                canonical,
+                tuple(set([canonical, *(row.get("aliases") or [])])),
+            )
+        )
+        seen.add(canonical)
+    return merged
+
+
+def _is_safe_dynamic_sku_line(
+    *,
+    category: str,
+    canonical: str,
+    aliases: tuple[str, ...],
+    known_aliases: set[str],
+) -> bool:
+    normalized = {_norm_alias(value) for value in (canonical, *aliases)}
+    if normalized & known_aliases:
+        return False
+    if any(
+        value != known and (value in known or known in value)
+        for value in normalized
+        for known in known_aliases
+    ):
+        return False
+    for value in normalized:
+        if any(part in value for part in _UNSAFE_DYNAMIC_SKU_PARTS):
+            return False
+        if category == "gpu" and any(brand in value for brand in ("msi", "asus", "zotac")):
+            return False
+        if len(value.split("-")) > 3:
+            return False
+    return True
+
+
+def _merge_sku_lines(rows: list[dict]) -> dict[str, list[tuple[str, tuple[str, ...]]]]:
+    grouped = _constant_sku_lines()
+    known_by_category: dict[str, set[str]] = {}
+    for category, entries in grouped.items():
+        known_by_category[category] = {
+            _norm_alias(alias)
+            for canonical, aliases in entries
+            for alias in (canonical, *aliases)
+        }
+
+    seen = {
+        (category, canonical)
+        for category, entries in grouped.items()
+        for canonical, _ in entries
+    }
+    for row in rows:
+        category = row["category"]
+        canonical = row["canonical"]
+        aliases = tuple(set([canonical, *(row.get("aliases") or [])]))
+        if (category, canonical) in seen:
+            continue
+        if not _is_safe_dynamic_sku_line(
+            category=category,
+            canonical=canonical,
+            aliases=aliases,
+            known_aliases=known_by_category.setdefault(category, set()),
+        ):
+            continue
+        grouped.setdefault(category, []).append((canonical, aliases))
+        seen.add((category, canonical))
+        known_by_category[category].update(_norm_alias(alias) for alias in aliases)
+    return grouped
+
+
 def _load_from_db() -> tuple[
     list[tuple[str, tuple[str, ...]]] | None,
     dict[str, list[tuple[str, tuple[str, ...]]]] | None,
@@ -51,28 +157,8 @@ def _load_from_db() -> tuple[
         print(f"  [vocab] DB load failed, using hardcoded fallback: {e}")
         return None, None
 
-    if not b_rows:
-        brands = None
-    else:
-        brands = [
-            (
-                r["canonical"],
-                tuple(set([r["canonical"], *(r.get("aliases") or [])])),
-            )
-            for r in b_rows
-        ]
-    if not s_rows:
-        sku_lines = None
-    else:
-        grouped: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
-        for r in s_rows:
-            grouped.setdefault(r["category"], []).append(
-                (
-                    r["canonical"],
-                    tuple(set([r["canonical"], *(r.get("aliases") or [])])),
-                )
-            )
-        sku_lines = grouped
+    brands = _merge_brands(b_rows) if b_rows else None
+    sku_lines = _merge_sku_lines(s_rows) if s_rows else None
     return brands, sku_lines
 
 
@@ -87,12 +173,9 @@ def _ensure_loaded() -> None:
 
         # Fall back to hardcoded if DB returned nothing (cold start)
         if b is None:
-            b = list(_catalog.BRAND_ALIASES.items())
+            b = _constant_brands()
         if s is None:
-            s = {
-                cat: [(entry[0], tuple(entry)) for entry in entries]
-                for cat, entries in _catalog.SKU_LINE_TOKENS.items()
-            }
+            s = _constant_sku_lines()
         _brands_cache = b
         _sku_lines_cache = s
 

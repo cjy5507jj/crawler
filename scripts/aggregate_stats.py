@@ -37,6 +37,12 @@ def main() -> None:
         action="store_true",
         help="Skip writing a row to product_market_stats_history.",
     )
+    parser.add_argument(
+        "--used-data-source",
+        choices=("snapshots", "observations", "hybrid"),
+        default="hybrid",
+        help="Use legacy snapshots, deduped observations, or observations with snapshot fallback.",
+    )
     args = parser.parse_args()
 
     db = get_client()
@@ -45,6 +51,7 @@ def main() -> None:
         category=args.category,
         window_days=args.window_days,
         write_history=not args.no_history,
+        used_data_source=args.used_data_source,
     )
     if not args.no_trends:
         aggregate_trends(db)

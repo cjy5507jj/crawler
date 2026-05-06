@@ -274,6 +274,39 @@ def _fetch_all_used_snapshots_grouped(
     return grouped
 
 
+def _fetch_all_used_observations_grouped(
+    db: _SupabaseLike,
+    since_date: str,
+) -> tuple[bool, dict[str, list[_Snapshot]]]:
+    try:
+        rows = _page_through(
+            db.table("used_listing_observations")
+            .select("source,listing_id,matched_product_id,price,last_observed_at,status")
+            .in_("source", list(_C2C_USED_SOURCES))
+            .gte("observed_date", since_date)
+            .order("last_observed_at", desc=True)
+        )
+    except Exception:
+        return False, {}
+
+    grouped: dict[str, list[_Snapshot]] = {}
+    seen_listings: set[tuple[str, str]] = set()
+    for r in rows:
+        if r.get("price") is None or r.get("matched_product_id") is None:
+            continue
+        status = r.get("status")
+        if status not in {None, "selling", "reserved"}:
+            continue
+        listing_key = (r["source"], r["listing_id"])
+        if listing_key in seen_listings:
+            continue
+        seen_listings.add(listing_key)
+        grouped.setdefault(r["matched_product_id"], []).append(
+            _Snapshot(price=int(r["price"]), snapshot_at=r["last_observed_at"])
+        )
+    return True, grouped
+
+
 def _fetch_latest_new_prices(db: _SupabaseLike) -> dict[str, int]:
     """Return {product_id: latest new price}.
     Postgres returns rows ordered by snapshot_at desc, so first per product wins."""
@@ -486,6 +519,7 @@ def aggregate_market_stats(
     category: str | None = None,
     window_days: int = 30,
     write_history: bool = True,
+    used_data_source: str = "hybrid",
 ) -> dict:
     """Recompute product_market_stats. Returns summary.
 
@@ -495,10 +529,37 @@ def aggregate_market_stats(
     product_market_stats_history for trend computation.
     """
     since = _iso_window_start(window_days)
+    since_date = (datetime.now(timezone.utc) - timedelta(days=window_days)).date().isoformat()
     products = _fetch_all_products(db, category)
     print(f"Aggregating {len(products)} products...")
 
-    used_by_pid = _fetch_all_used_snapshots_grouped(db, since)
+    used_source_used = "snapshots"
+    if used_data_source == "observations":
+        supported, used_by_pid = _fetch_all_used_observations_grouped(db, since_date)
+        if not supported:
+            print("used_listing_observations unavailable; falling back to price_snapshots")
+            used_by_pid = _fetch_all_used_snapshots_grouped(db, since)
+        else:
+            used_source_used = "observations"
+    elif used_data_source == "snapshots":
+        used_by_pid = _fetch_all_used_snapshots_grouped(db, since)
+    elif used_data_source == "hybrid":
+        snapshot_by_pid = _fetch_all_used_snapshots_grouped(db, since)
+        supported, observation_by_pid = _fetch_all_used_observations_grouped(db, since_date)
+        if not supported:
+            print("used_listing_observations unavailable; falling back to price_snapshots")
+            used_by_pid = snapshot_by_pid
+        else:
+            used_by_pid = {
+                pid: observation_by_pid.get(pid) or snapshots
+                for pid, snapshots in snapshot_by_pid.items()
+            }
+            for pid, observations in observation_by_pid.items():
+                if pid not in used_by_pid:
+                    used_by_pid[pid] = observations
+            used_source_used = "hybrid"
+    else:
+        raise ValueError("used_data_source must be 'snapshots', 'observations', or 'hybrid'")
     new_by_pid = _fetch_latest_new_prices(db)
 
     stats_list: list[MarketStats] = []
@@ -534,4 +595,5 @@ def aggregate_market_stats(
         "with_used": with_used,
         "window_days": window_days,
         "history_written": history_written,
+        "used_data_source": used_source_used,
     }

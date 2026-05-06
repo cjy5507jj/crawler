@@ -2,8 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 from src.services.aggregate import (
     _Snapshot,
+    _fetch_all_used_observations_grouped,
     _fetch_all_used_snapshots_grouped,
     _trimmed_mean,
+    aggregate_market_stats,
     compute_stats,
     compute_trend,
 )
@@ -71,6 +73,68 @@ class _DB:
     def table(self, name):
         assert name == "price_snapshots"
         return _Query(self._rows)
+
+
+class _MultiTableDB:
+    def __init__(self, tables):
+        self._tables = tables
+
+    def table(self, name):
+        if name not in self._tables:
+            raise RuntimeError(f"missing table {name}")
+        return _Query(self._tables[name])
+
+
+class _WritableQuery(_Query):
+    def __init__(self, table: "_WritableTable"):
+        super().__init__(table.rows)
+        self._table = table
+        self._payload = None
+        self._on_conflict = None
+        self._mode = "select"
+
+    def select(self, _cols, **_kwargs):
+        self._mode = "select"
+        return self
+
+    def upsert(self, payload, on_conflict=None):
+        self._mode = "upsert"
+        self._payload = payload
+        self._on_conflict = on_conflict
+        return self
+
+    def insert(self, payload):
+        self._mode = "insert"
+        self._payload = payload
+        return self
+
+    def execute(self):
+        if self._mode == "upsert":
+            payloads = self._payload if isinstance(self._payload, list) else [self._payload]
+            self._table.rows.extend(dict(row) for row in payloads)
+            return _Result(payloads)
+        if self._mode == "insert":
+            payloads = self._payload if isinstance(self._payload, list) else [self._payload]
+            self._table.rows.extend(dict(row) for row in payloads)
+            return _Result(payloads)
+        return super().execute()
+
+
+class _WritableTable:
+    def __init__(self, rows):
+        self.rows = rows
+
+
+class _WritableDB:
+    def __init__(self, tables):
+        self._tables = {name: _WritableTable(rows) for name, rows in tables.items()}
+
+    def table(self, name):
+        self._tables.setdefault(name, _WritableTable([]))
+        return _WritableQuery(self._tables[name])
+
+    def rows(self, name):
+        return self._tables[name].rows
 
 
 def test_trimmed_mean_short_sample_returns_simple_mean() -> None:
@@ -242,6 +306,114 @@ def test_fetch_used_snapshots_uses_only_c2c_sources() -> None:
     ])
     grouped = _fetch_all_used_snapshots_grouped(db, "2026-04-26T00:00:00Z")
     assert [s.price for s in grouped["p-1"]] == [110_000, 100_000]
+
+
+def test_fetch_used_observations_counts_latest_active_listing_once() -> None:
+    db = _MultiTableDB({
+        "used_listing_observations": [
+            {
+                "source": "bunjang",
+                "listing_id": "L1",
+                "matched_product_id": "p-1",
+                "price": 100_000,
+                "observed_date": "2026-05-05",
+                "last_observed_at": "2026-05-05T10:00:00+00:00",
+                "status": "selling",
+            },
+            {
+                "source": "bunjang",
+                "listing_id": "L1",
+                "matched_product_id": "p-1",
+                "price": 90_000,
+                "observed_date": "2026-05-04",
+                "last_observed_at": "2026-05-04T10:00:00+00:00",
+                "status": "selling",
+            },
+            {
+                "source": "joonggonara",
+                "listing_id": "L2",
+                "matched_product_id": "p-1",
+                "price": 110_000,
+                "observed_date": "2026-05-05",
+                "last_observed_at": "2026-05-05T09:00:00+00:00",
+                "status": "reserved",
+            },
+            {
+                "source": "daangn",
+                "listing_id": "L3",
+                "matched_product_id": "p-1",
+                "price": 120_000,
+                "observed_date": "2026-05-05",
+                "last_observed_at": "2026-05-05T08:00:00+00:00",
+                "status": "sold",
+            },
+            {
+                "source": "naver_shop",
+                "listing_id": "N1",
+                "matched_product_id": "p-1",
+                "price": 999_000,
+                "observed_date": "2026-05-05",
+                "last_observed_at": "2026-05-05T07:00:00+00:00",
+                "status": "selling",
+            },
+        ]
+    })
+
+    supported, grouped = _fetch_all_used_observations_grouped(db, "2026-05-01")
+
+    assert supported is True
+    assert [s.price for s in grouped["p-1"]] == [100_000, 110_000]
+
+
+def test_aggregate_market_stats_hybrid_uses_observations_then_snapshot_fallback() -> None:
+    db = _WritableDB({
+        "products": [
+            {"id": "p-obs", "category": "cpu", "is_accessory": False},
+            {"id": "p-snap", "category": "cpu", "is_accessory": False},
+        ],
+        "used_listing_observations": [
+            {
+                "source": "bunjang",
+                "listing_id": "L1",
+                "matched_product_id": "p-obs",
+                "price": 100_000,
+                "observed_date": "2026-05-05",
+                "last_observed_at": "2026-05-05T10:00:00+00:00",
+                "status": "selling",
+            }
+        ],
+        "price_snapshots": [
+            {
+                "product_id": "p-obs",
+                "market_type": "used",
+                "source": "bunjang",
+                "price": 50_000,
+                "snapshot_at": "2026-05-05T09:00:00+00:00",
+            },
+            {
+                "product_id": "p-snap",
+                "market_type": "used",
+                "source": "bunjang",
+                "price": 80_000,
+                "snapshot_at": "2026-05-05T09:00:00+00:00",
+            },
+        ],
+        "product_market_stats": [],
+        "product_market_stats_history": [],
+    })
+
+    summary = aggregate_market_stats(
+        db,
+        category="cpu",
+        window_days=30,
+        write_history=False,
+        used_data_source="hybrid",
+    )
+
+    assert summary["used_data_source"] == "hybrid"
+    rows = {row["product_id"]: row for row in db.rows("product_market_stats")}
+    assert rows["p-obs"]["used_median"] == 100_000
+    assert rows["p-snap"]["used_median"] == 80_000
 
 
 def test_compute_stats_skips_zero_and_negative_prices() -> None:

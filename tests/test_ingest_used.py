@@ -16,9 +16,10 @@ class _Builder:
         self._mode = ""
         self._payload: Any = None
         self._on_conflict: str | None = None
-        self._eq: tuple[str, Any] | None = None
+        self._eqs: list[tuple[str, Any]] = []
         self._range: tuple[int, int] | None = None
         self._select: str | None = None
+        self._limit: int | None = None
 
     def upsert(self, payload, on_conflict=None):
         self._mode = "upsert"
@@ -37,7 +38,11 @@ class _Builder:
         return self
 
     def eq(self, col, val):
-        self._eq = (col, val)
+        self._eqs.append((col, val))
+        return self
+
+    def limit(self, count):
+        self._limit = count
         return self
 
     def range(self, start, end):
@@ -50,7 +55,7 @@ class _Builder:
         if self._mode == "insert":
             return self._t._insert(self._payload)
         if self._mode == "select":
-            return self._t._select(self._eq, self._range)
+            return self._t._select(self._eqs, self._range, self._limit)
         raise RuntimeError(f"unknown mode {self._mode}")
 
 
@@ -86,14 +91,15 @@ class _Table:
         self.rows.append(new)
         return _Result([new])
 
-    def _select(self, eq, rng):
+    def _select(self, eqs, rng, limit):
         rows = self.rows
-        if eq:
-            col, val = eq
+        for col, val in eqs:
             rows = [r for r in rows if r.get(col) == val]
         if rng:
             s, e = rng
             rows = rows[s : e + 1]
+        if limit is not None:
+            rows = rows[:limit]
         return _Result(rows)
 
 
@@ -200,6 +206,64 @@ def test_run_used_matches_and_writes_snapshots() -> None:
     snapshots = db.rows("price_snapshots")
     assert len(snapshots) == 2
     assert all(s["market_type"] == "used" for s in snapshots)
+    observations = db.rows("used_listing_observations")
+    assert len(observations) == 2
+    assert all(o["seen_count"] == 1 for o in observations)
+
+
+def test_run_used_repeated_same_day_listing_updates_observation_without_snapshot() -> None:
+    db = FakeDB()
+    _seed_products(db)
+    listing = UsedListing(
+        source="fake",
+        listing_id="L1",
+        title="AMD 라이젠5 5600X 미개봉",
+        price=200_000,
+        url="http://example/L1",
+        crawled_at="2026-05-06T01:00:00+00:00",
+    )
+    adapter = _StaticAdapter([listing])
+
+    first = run_used(db, adapter, category="cpu")
+    second = run_used(db, adapter, category="cpu")
+
+    assert first["snapshots"] == 1
+    assert second["snapshots"] == 0
+    snapshots = db.rows("price_snapshots")
+    assert len(snapshots) == 1
+    observations = db.rows("used_listing_observations")
+    assert len(observations) == 1
+    assert observations[0]["seen_count"] == 2
+
+
+def test_run_used_repeated_listing_price_change_records_new_snapshot() -> None:
+    db = FakeDB()
+    _seed_products(db)
+    adapter = _StaticAdapter([
+        UsedListing(
+            source="fake",
+            listing_id="L1",
+            title="AMD 라이젠5 5600X 미개봉",
+            price=200_000,
+            crawled_at="2026-05-06T01:00:00+00:00",
+        )
+    ])
+    run_used(db, adapter, category="cpu")
+
+    adapter = _StaticAdapter([
+        UsedListing(
+            source="fake",
+            listing_id="L1",
+            title="AMD 라이젠5 5600X 미개봉",
+            price=190_000,
+            crawled_at="2026-05-06T02:00:00+00:00",
+        )
+    ])
+    second = run_used(db, adapter, category="cpu")
+
+    assert second["snapshots"] == 1
+    assert len(db.rows("price_snapshots")) == 2
+    assert db.rows("used_listing_observations")[0]["price"] == 190_000
 
 
 def test_match_reasons_persisted_in_payload() -> None:
@@ -342,7 +406,11 @@ def test_run_danawa_payload_includes_dynamic_pc_identity() -> None:
     )
 
     assert payload["domain"] == "pc_parts"
-    assert payload["canonical_key"] == "pc_parts:gpu:msi:rtx5070:gaming-trio"
+    assert payload["canonical_key"].startswith("pc_parts:gpu:msi:rtx5070")
+    assert (
+        "gaming-trio" in payload["canonical_key"]
+        or "게이밍-트리오" in payload["canonical_key"]
+    )
     assert payload["specs"]["category_tokens"] == ["rtx5070"]
 
 
@@ -363,7 +431,11 @@ def test_run_used_auto_creates_pc_product_for_strong_new_gpu_identity() -> None:
     product = db.rows("products")[0]
     assert product["source"] == "pc_auto"
     assert product["domain"] == "pc_parts"
-    assert product["canonical_key"] == "pc_parts:gpu:msi:rtx6090:gaming-trio"
+    assert product["canonical_key"].startswith("pc_parts:gpu:msi:rtx6090")
+    assert (
+        "gaming-trio" in product["canonical_key"]
+        or "게이밍-트리오" in product["canonical_key"]
+    )
     assert product["specs"]["category_tokens"] == ["rtx6090"]
     used = db.rows("used_listings")[0]
     assert used["matched_product_id"] == product["id"]

@@ -348,8 +348,15 @@ def detect_brand(name: str, category: str | None = None) -> str | None:
 
     skip_chipsets = category == "gpu"
     chipset_canons = set(CHIPSET_ALIASES.keys()) if skip_chipsets else frozenset()
+    chipset_aliases = (
+        {alias for aliases in CHIPSET_ALIASES.values() for alias in aliases}
+        if skip_chipsets
+        else frozenset()
+    )
     for canonical, aliases in vocab.brand_aliases():
         if canonical in chipset_canons:
+            continue
+        if any(alias in chipset_aliases for alias in aliases):
             continue
         if len(canonical) <= 2 and canonical not in _ALLOWED_SHORT_BRANDS:
             continue

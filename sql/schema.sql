@@ -90,6 +90,39 @@ create index if not exists idx_used_listings_parsed_specs_gin
   on used_listings using gin (parsed_specs);
 
 -- ---------------------------------------------------------------------------
+-- used_listing_observations: one source/listing/KST-day observation
+-- ---------------------------------------------------------------------------
+create table if not exists used_listing_observations (
+  id uuid primary key default gen_random_uuid(),
+  used_listing_id uuid references used_listings(id) on delete cascade,
+  source text not null,
+  listing_id text not null,
+  observed_date date not null,
+  first_observed_at timestamptz not null default now(),
+  last_observed_at timestamptz not null default now(),
+  seen_count integer not null default 1,
+  category text,
+  domain text,
+  matched_product_id uuid references products(id) on delete set null,
+  price integer,
+  status text,
+  match_score numeric,
+  match_reasons jsonb,
+  parsed_specs jsonb not null default '{}'::jsonb,
+  metadata jsonb not null default '{}'::jsonb,
+  unique (source, listing_id, observed_date)
+);
+
+create index if not exists idx_ulo_product_observed_date
+  on used_listing_observations(matched_product_id, observed_date desc);
+create index if not exists idx_ulo_source_listing_observed_date
+  on used_listing_observations(source, listing_id, observed_date desc);
+create index if not exists idx_ulo_category_status_observed_date
+  on used_listing_observations(category, status, observed_date desc);
+create index if not exists idx_ulo_last_observed_brin
+  on used_listing_observations using brin (last_observed_at);
+
+-- ---------------------------------------------------------------------------
 -- price_snapshots: time series of prices (new + used)
 -- ---------------------------------------------------------------------------
 create table if not exists price_snapshots (
@@ -175,3 +208,84 @@ create index if not exists idx_product_market_stats_category
   on product_market_stats(category);
 create index if not exists idx_product_market_stats_ratio
   on product_market_stats(used_to_new_ratio);
+
+-- ---------------------------------------------------------------------------
+-- product_market_stats_history: append-only aggregate snapshots for charts
+-- ---------------------------------------------------------------------------
+create table if not exists product_market_stats_history (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid references products(id) on delete cascade,
+  category text not null,
+  captured_at timestamptz not null default now(),
+  window_days integer not null,
+  used_count integer not null default 0,
+  used_min integer,
+  used_max integer,
+  used_median integer,
+  used_mean integer,
+  new_price integer,
+  used_to_new_ratio numeric
+);
+
+create index if not exists idx_pmsh_product_captured
+  on product_market_stats_history(product_id, captured_at desc);
+create index if not exists idx_pmsh_captured
+  on product_market_stats_history(captured_at desc);
+create index if not exists idx_pmsh_category_captured
+  on product_market_stats_history(category, captured_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Chart read models
+-- ---------------------------------------------------------------------------
+create or replace view product_market_daily_stats as
+select distinct on (h.product_id, ((h.captured_at at time zone 'Asia/Seoul')::date))
+  ((h.captured_at at time zone 'Asia/Seoul')::date) as chart_date,
+  h.captured_at,
+  h.product_id,
+  h.category,
+  p.domain,
+  p.brand,
+  p.model_name,
+  p.canonical_key,
+  p.name,
+  h.window_days,
+  h.used_count,
+  h.used_min,
+  h.used_max,
+  h.used_median,
+  h.used_mean,
+  h.new_price,
+  h.used_to_new_ratio
+from product_market_stats_history h
+join products p on p.id = h.product_id
+where coalesce(p.is_accessory, false) = false
+  and h.used_count > 0
+order by
+  h.product_id,
+  ((h.captured_at at time zone 'Asia/Seoul')::date),
+  h.captured_at desc;
+
+comment on view product_market_daily_stats is
+  'One latest Asia/Seoul daily history row per product for price charts; removes duplicate same-day aggregate runs.';
+
+create or replace view category_market_daily_stats as
+with daily as (
+  select * from product_market_daily_stats
+)
+select
+  chart_date,
+  category,
+  count(*)::integer as product_count,
+  sum(used_count)::integer as listing_count,
+  percentile_cont(0.5) within group (order by used_median)::integer as median_used_median,
+  avg(used_median)::integer as avg_used_median,
+  min(used_min) as min_used_price,
+  max(used_max) as max_used_price,
+  avg(new_price)::integer as avg_new_price,
+  avg(used_to_new_ratio)::numeric(10,4) as avg_used_to_new_ratio
+from daily
+where used_median is not null
+group by chart_date, category;
+
+comment on view category_market_daily_stats is
+  'Daily category-level chart series derived from product_market_daily_stats.';

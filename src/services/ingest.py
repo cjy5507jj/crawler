@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Iterable, Protocol
 
 from src.adapters.market_price import MarketPriceObservation
@@ -35,6 +36,7 @@ class _SupabaseLike(Protocol):
 
 
 _B2C_SOURCES = {"naver_shop"}
+_KST = ZoneInfo("Asia/Seoul")
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +174,113 @@ def _upsert_used_listing(
         .execute()
     )
     return result.data[0]["id"]
+
+
+def _listing_observed_at(listing: UsedListing) -> datetime:
+    if listing.crawled_at:
+        try:
+            value = listing.crawled_at
+            if value.endswith("Z"):
+                value = value[:-1] + "+00:00"
+            dt = datetime.fromisoformat(value)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def _select_existing_observation(
+    db: _SupabaseLike,
+    *,
+    source: str,
+    listing_id: str,
+    observed_date: str,
+) -> tuple[bool, dict | None]:
+    try:
+        data = (
+            db.table("used_listing_observations")
+            .select("id,first_observed_at,seen_count,price,status,matched_product_id")
+            .eq("source", source)
+            .eq("listing_id", listing_id)
+            .eq("observed_date", observed_date)
+            .limit(1)
+            .execute()
+            .data
+        )
+    except Exception:
+        # Older Supabase schemas do not have migration_016 yet. Keep the old
+        # append-only snapshot path working until the migration is applied.
+        return False, None
+    return True, data[0] if data else None
+
+
+def _upsert_used_listing_observation(
+    db: _SupabaseLike,
+    *,
+    used_listing_id: str,
+    listing: UsedListing,
+    category: str,
+    matched_product_id: str,
+    score: float | None,
+    reasons: list[str] | None,
+    domain: str,
+    parsed_specs: dict,
+) -> bool | None:
+    """Upsert a daily listing observation.
+
+    Returns:
+        True when a compatibility price snapshot should be inserted.
+        False when this is a same-day repeat with no price/status transition.
+        None when the observation table is unavailable and callers should use
+        the legacy snapshot insertion path.
+    """
+    observed_at = _listing_observed_at(listing)
+    observed_date = observed_at.astimezone(_KST).date().isoformat()
+    supported, existing = _select_existing_observation(
+        db,
+        source=listing.source,
+        listing_id=listing.listing_id,
+        observed_date=observed_date,
+    )
+    if not supported:
+        return None
+
+    should_insert_snapshot = existing is None
+    if existing is not None:
+        if existing.get("price") != listing.price:
+            should_insert_snapshot = True
+        if existing.get("status") != listing.status:
+            should_insert_snapshot = True
+        if existing.get("matched_product_id") != matched_product_id:
+            should_insert_snapshot = True
+
+    payload = {
+        "used_listing_id": used_listing_id,
+        "source": listing.source,
+        "listing_id": listing.listing_id,
+        "observed_date": observed_date,
+        "first_observed_at": (
+            existing.get("first_observed_at") if existing else observed_at.isoformat()
+        ),
+        "last_observed_at": observed_at.isoformat(),
+        "seen_count": int((existing or {}).get("seen_count") or 0) + 1,
+        "category": category,
+        "domain": domain,
+        "matched_product_id": matched_product_id,
+        "price": listing.price,
+        "status": listing.status,
+        "match_score": score,
+        "match_reasons": reasons,
+        "parsed_specs": parsed_specs or {},
+        "metadata": listing.metadata or {},
+    }
+    db.table("used_listing_observations").upsert(
+        payload,
+        on_conflict="source,listing_id,observed_date",
+    ).execute()
+    return should_insert_snapshot
 
 
 def _insert_used_snapshot(
@@ -436,11 +545,28 @@ def _record_matched_listing(
     domain: str,
     parsed_specs: dict,
 ) -> int:
-    _upsert_used_listing(
+    used_listing_id = _upsert_used_listing(
         db, listing, category, matched_product_id, score, reasons, domain, parsed_specs
     )
-    _insert_used_snapshot(db, matched_product_id, listing)
-    return 1 if listing.price is not None else 0
+    if listing.source in _B2C_SOURCES:
+        _insert_used_snapshot(db, matched_product_id, listing)
+        return 1 if listing.price is not None else 0
+
+    should_insert_snapshot = _upsert_used_listing_observation(
+        db,
+        used_listing_id=used_listing_id,
+        listing=listing,
+        category=category,
+        matched_product_id=matched_product_id,
+        score=score,
+        reasons=reasons,
+        domain=domain,
+        parsed_specs=parsed_specs,
+    )
+    if should_insert_snapshot is not False:
+        _insert_used_snapshot(db, matched_product_id, listing)
+        return 1 if listing.price is not None else 0
+    return 0
 
 
 def run_used(
