@@ -1,0 +1,111 @@
+name: crawler-cron
+
+# Drafted but **not on schedule yet** — current production crawl runs from
+# launchd on a dedicated mac (see ops/com.pcpartscrawler.*.plist). Flipping
+# the `schedule:` block below to active requires unloading those plists
+# first to avoid double-ingest. Until then, this workflow is only invoked
+# manually via the Actions tab → "Run workflow" with the desired job name.
+#
+# Maps 1:1 to the existing launchd cadence (handoff pre-launch §3 ④):
+#   • daily          — 18:00 UTC every day      (= ~03:00 KST)
+#   • daangn-weekly  — 19:00 UTC every Sunday   (= ~04:00 KST Monday)
+#   • vocab-weekly   — 20:00 UTC every Monday   (= ~05:00 KST Tuesday)
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which crawl to run
+        required: true
+        type: choice
+        default: daily
+        options:
+          - daily
+          - daangn-weekly
+          - vocab-weekly
+
+  # Uncomment when migrating off launchd. Verify no plist is loaded with
+  # `launchctl list | grep pcpartscrawler` on the launchd host first.
+  # schedule:
+  #   - cron: "0 18 * * *"
+  #   - cron: "0 19 * * 0"
+  #   - cron: "0 20 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Same-flavor runs (daily / daangn-weekly / vocab-weekly) queue rather
+  # than fan-out — keeps Supabase write pressure bounded.
+  group: crawler-cron-${{ inputs.job || github.event.schedule }}
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    if: |
+      inputs.job == 'daily' || github.event.schedule == '0 18 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --extra browser
+      - name: Run daily crawl (skip daangn + danawa-pages 0)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          QUASARZONE_PHPSESSID: ${{ secrets.QUASARZONE_PHPSESSID }}
+          CRAWL_TRIGGER_SOURCE: github-actions
+          PYTHONUNBUFFERED: "1"
+        run: |
+          uv run python scripts/run_all.py \
+            --skip-sources daangn \
+            --danawa-pages 0
+
+  daangn-weekly:
+    if: |
+      inputs.job == 'daangn-weekly' || github.event.schedule == '0 19 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --extra browser
+      - name: Run daangn-weekly crawl (all sources, danawa-pages 0)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          QUASARZONE_PHPSESSID: ${{ secrets.QUASARZONE_PHPSESSID }}
+          CRAWL_TRIGGER_SOURCE: github-actions
+          PYTHONUNBUFFERED: "1"
+        run: |
+          uv run python scripts/run_all.py \
+            --danawa-pages 0
+
+  vocab-weekly:
+    if: |
+      inputs.job == 'vocab-weekly' || github.event.schedule == '0 20 * * 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Run vocab discovery
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CRAWL_TRIGGER_SOURCE: github-actions
+          PYTHONUNBUFFERED: "1"
+        run: |
+          uv run python scripts/discover_vocab.py
