@@ -29,6 +29,8 @@ from src.adapters.quasarzone import QuasarzoneAdapter
 from src.adapters.ruliweb_market import RuliwebMarketAdapter
 from src.clients.supabase_client import get_client
 from src.crawlers.danawa import CATEGORY_MAP
+from src.domains.consumer.catalog import build_seed_payloads
+from src.domains.consumer.matching import CONSUMER_CATEGORIES
 from src.normalization import vocab
 from src.services.aggregate import aggregate_market_stats
 from src.services.alerts import detect_anomalies, notify
@@ -90,6 +92,19 @@ def _safe(label: str, fn) -> None:
     except Exception:
         print(f"  ⚠ {label} failed:")
         traceback.print_exc()
+
+
+def _ensure_consumer_seed(db) -> None:
+    """Idempotently upsert the consumer-electronics seed catalog into products.
+
+    Mirrors `scripts/seed_consumer_products.py`. The upsert key (source,source_id)
+    means re-running is a no-op when seeds already exist — safe to call at the
+    top of every consumer-phase invocation so the matcher always has its product
+    master, even on a fresh DB or after a `--skip-danawa` run.
+    """
+    rows = build_seed_payloads()
+    db.table("products").upsert(rows, on_conflict="source,source_id").execute()
+    print(f"  [consumer] seeded {len(rows)} product masters (idempotent)")
 
 
 def _run_used_for_category(
@@ -189,6 +204,16 @@ def main() -> None:
         action="store_true",
         help="Skip the post-aggregate watchlist alert dispatch",
     )
+    parser.add_argument(
+        "--include-consumer",
+        action="store_true",
+        help="Also crawl consumer-electronics categories "
+             f"({', '.join(sorted(CONSUMER_CATEGORIES))}). Skips danawa phase "
+             "for these (no Danawa CATEGORY_MAP entry); used-market sources "
+             "use seed queries from src/domains/consumer/catalog.py. Requires "
+             "consumer products to be seeded — runs seed_consumer_products "
+             "idempotently if missing.",
+    )
     args = parser.parse_args()
 
     categories = [c.strip().lower() for c in args.categories.split(",") if c.strip()]
@@ -199,6 +224,11 @@ def main() -> None:
 
     skip_sources = {s.strip() for s in args.skip_sources.split(",") if s.strip()}
 
+    # Consumer categories are appended to the used-market loop but skip the
+    # Danawa phase (no CATEGORY_MAP entry). Kept in a separate list so the
+    # validation above (against CATEGORY_MAP) remains strict for --categories.
+    consumer_categories = sorted(CONSUMER_CATEGORIES) if args.include_consumer else []
+
     db = get_client()
 
     stale_runs = mark_stale_running_runs(db)
@@ -208,6 +238,7 @@ def main() -> None:
     trigger_source = os.environ.get("CRAWL_TRIGGER_SOURCE", "manual")
     run_args = {
         "categories": categories,
+        "consumer_categories": consumer_categories,
         "danawa_pages": args.danawa_pages,
         "skip_danawa": args.skip_danawa,
         "skip_sources": sorted(skip_sources),
@@ -261,7 +292,34 @@ def main() -> None:
                 queries_per_search=args.queries_per_search,
                 skip_sources=skip_sources,
             )
-        summary["phases"]["used"] = {"categories": categories}
+
+        # Phase 3.5: Consumer-electronics categories (phone/macbook/laptop/tv/
+        # appliance). Same used-market loop as PC parts but seeded from the
+        # consumer catalog rather than Danawa. Idempotently re-seeds products
+        # so adapters have a canonical product master to match against.
+        if consumer_categories:
+            print("\n========== CONSUMER SEED ==========")
+            try:
+                _ensure_consumer_seed(db)
+                summary["phases"]["consumer_seed"] = {"done": True}
+            except Exception:
+                traceback.print_exc()
+                summary["phases"]["consumer_seed"] = {"done": False}
+            for category in consumer_categories:
+                print(f"\n========== {category.upper()} (consumer used) ==========")
+                _run_used_for_category(
+                    db,
+                    category,
+                    used_pages=args.used_pages,
+                    bunjang_pages=args.bunjang_pages,
+                    queries_per_search=args.queries_per_search,
+                    skip_sources=skip_sources,
+                )
+
+        summary["phases"]["used"] = {
+            "categories": categories,
+            "consumer_categories": consumer_categories,
+        }
 
         print("\n========== AGGREGATE ==========")
         aggregate_market_stats(db, window_days=args.window_days)
