@@ -72,6 +72,41 @@ _USED_PRICE_FLOORS: dict[str, int] = {
 _USED_TO_NEW_MAX_RATIO = 1.5
 
 
+# Placeholder prices that sellers commonly enter as a stand-in for "DM for
+# price" rather than the real ask. Filtering these here keeps the stats from
+# being anchored to repdigit / "9999..." tokens that aren't real signals.
+_PLACEHOLDER_PRICES = frozenset({
+    1,
+    1_111,
+    11_111,
+    99_999,
+    111_111,
+    999_999,
+    1_111_111,
+    9_999_999,
+    11_111_111,
+})
+
+
+# Category-level ceilings — anything above this is almost certainly a full-PC
+# bundle, multi-pack ("2TB 4TB 6TB 8TB" listings on used-king HDD), or a typo
+# extra zero. These are looser than the per-product `_USED_TO_NEW_MAX_RATIO`
+# check (which requires a known new price). Calibrated against current
+# c2c_used_median distributions observed in production.
+_USED_PRICE_CEILINGS: dict[str, int] = {
+    "cpu": 2_500_000,
+    "gpu": 8_000_000,
+    "ram": 1_500_000,
+    "ssd": 1_500_000,
+    "hdd": 1_500_000,
+    "mainboard": 1_500_000,
+    "psu": 800_000,
+    "cooler": 800_000,
+    "case": 800_000,
+    "monitor": 2_500_000,
+}
+
+
 class _SupabaseLike(Protocol):
     def table(self, name: str): ...
 
@@ -141,6 +176,15 @@ def _filter_used_prices(category: str, prices: list[int], new_price: int | None)
     used_floor = _category_floor(_USED_PRICE_FLOORS, category)
     new_floor = _category_floor(_NEW_PRICE_FLOORS, category)
     new_price_is_normal = _new_price_meets_floor(category, new_price)
+
+    # Drop placeholder prices ("99,999원" style "DM 주세요" stand-ins) and
+    # category ceilings before any other filtering — placeholders can otherwise
+    # cluster around a single repdigit value and become the median for small
+    # samples. See _PLACEHOLDER_PRICES and _USED_PRICE_CEILINGS above.
+    prices = [p for p in prices if p not in _PLACEHOLDER_PRICES]
+    ceiling = _category_floor(_USED_PRICE_CEILINGS, category)
+    if ceiling is not None:
+        prices = [p for p in prices if p <= ceiling]
 
     if used_floor is not None and (
         new_price is None or new_floor is None or new_price_is_normal

@@ -401,10 +401,126 @@ def extract_category_tokens(category: str, name: str) -> list[str]:
     return found
 
 
-def is_excluded_listing(title: str) -> bool:
+# Cross-category contamination check. Some listings advertise a GPU model in
+# the title but the caller passed the wrong category context (e.g. a CPU
+# search returned a "RTX 5080 불칸" listing). Without this check the CPU regex
+# would still strip a 4-digit SKU like "5080" and store it as a CPU row,
+# polluting CPU stats with GPU prices.
+#
+# Strategy: count category-pattern matches across *all* categories and flag
+# when a competing category clearly dominates the requested one. We only
+# block confident contradictions (different category wins by >= 2 tokens) to
+# avoid false positives on dual-purpose listings (e.g. mainboard listings
+# that mention "AM5" + a CPU model).
+_COMPETING_CHECK_CATEGORIES: tuple[str, ...] = (
+    "cpu",
+    "gpu",
+    "ram",
+    "ssd",
+    "hdd",
+    "mainboard",
+    "psu",
+    "cooler",
+    "monitor",
+)
+
+
+def detect_dominant_category(name: str) -> tuple[str, int] | None:
+    """Return (category, match_count) with the strongest category signal in the title.
+
+    Returns None when no category pattern matches. Used by `is_category_mismatch`
+    to detect listings whose dominant signal is for a different category than
+    the caller-provided one.
+    """
+
+    best: tuple[str, int] | None = None
+    for category in _COMPETING_CHECK_CATEGORIES:
+        tokens = extract_category_tokens(category, name)
+        if not tokens:
+            continue
+        count = len(tokens)
+        if best is None or count > best[1]:
+            best = (category, count)
+    return best
+
+
+def _token_has_alpha_prefix(token: str) -> bool:
+    """True when the SKU token carries an alphabetic vendor prefix (rtx/i7/ryzen/b650/etc.).
+
+    Used to distinguish "strong" matches (a GPU title's `rtx5080`) from "weak"
+    bare-digit matches (a CPU title's bare `5080`). The CPU regex
+    `\\d{4,5}(?:[xkfgst]…)?` happens to match plain GPU SKUs like "5080"
+    without a prefix — those tokens are weak and shouldn't beat a competing
+    category that DID find a prefixed match.
+    """
+
+    return any(c.isalpha() for c in token)
+
+
+def is_category_mismatch(category: str, name: str) -> bool:
+    """True when the listing title's dominant pattern points to a *different* category.
+
+    Heuristic: if the requested category only matched bare-digit tokens (no
+    alpha prefix) while some *other* category produced a prefixed match, treat
+    the listing as belonging to the other category and reject it.
+
+    Examples:
+      * "컬러풀 RTX 5080 불칸" with category='cpu': CPU regex strips "5080"
+        (bare digits) but GPU regex finds "rtx5080" (prefixed) → mismatch.
+      * "ASUS B650M 7600 호환 보드" with category='mainboard': mainboard finds
+        "b650m" (prefixed), so it isn't weak — no mismatch even though CPU
+        also finds "7600".
+      * "AMD 라이젠 5 7600" with category='cpu': CPU finds "7600" (weak) but
+        no other category produces a prefixed token, so no mismatch.
+    """
+
+    requested = category.lower()
+    requested_tokens = extract_category_tokens(requested, name)
+    if not requested_tokens:
+        return False
+    requested_is_weak = all(not _token_has_alpha_prefix(t) for t in requested_tokens)
+    if not requested_is_weak:
+        return False
+    for other in _COMPETING_CHECK_CATEGORIES:
+        if other == requested:
+            continue
+        other_tokens = extract_category_tokens(other, name)
+        if any(_token_has_alpha_prefix(t) for t in other_tokens):
+            return True
+    return False
+
+
+# Category-specific exclusion keywords. Monitor listings frequently surface
+# TV titles ("스마트TV" / "55인치 OLED TV") whose used median is multiples of a
+# real PC monitor — strip them out before the listing reaches the product
+# table. Tokens use a normalized form (whitespace collapsed) so "스마트 TV",
+# "스마트TV", "Smart TV" all match.
+_CATEGORY_EXCLUDED_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "monitor": (
+        "스마트tv",
+        "smarttv",
+        "led tv",
+        "oled tv",
+        "qled tv",
+        "neo qled",
+        "uhd tv",
+        "tv 모니터",  # ambiguous TV-as-monitor listings — usually large panels
+    ),
+}
+
+
+def is_excluded_listing(title: str, category: str | None = None) -> bool:
     lowered = title.lower()
     if any(kw in lowered for kw in EXCLUDED_LISTING_KEYWORDS):
         return True
+    if category is not None:
+        cat_kws = _CATEGORY_EXCLUDED_KEYWORDS.get(category.lower())
+        if cat_kws:
+            collapsed = re.sub(r"\s+", "", lowered)
+            for kw in cat_kws:
+                kw_collapsed = re.sub(r"\s+", "", kw)
+                if kw in lowered or kw_collapsed in collapsed:
+                    return True
     if is_multi_component_bundle(title):
         return True
     return False
@@ -541,6 +657,40 @@ def normalize_product_name(category: str, name: str) -> NormalizedProduct:
     capacity_tokens = extract_capacity_tokens(category, name)
     normalized_name = " ".join(tokens)
     model_name = " ".join(category_tokens) if category_tokens else normalized_name
+
+    # Prepend a brand/chipset/capacity token to disambiguate SKUs whose
+    # category regex strips them down to a too-generic token. Examples:
+    #   PSU: regex extracts wattage only ("850") → prepend brand to keep
+    #        Microincs / EVGA / Corsair 850W rows separated.
+    #   CPU: regex can strip "5600" (bare digits) → prepend "amd"/"intel"
+    #        from chipset so Ryzen 5 5600 and i5-5600 don't collide.
+    #   SSD/RAM: regex returns generic tokens like "m.2 nvme" or "ddr5" → add
+    #        brand + capacity to differentiate samsung 990 pro 1TB from
+    #        adata se920 2TB even though both match "m.2 nvme".
+    prefix_parts: list[str] = []
+    if category == "psu" and brand:
+        prefix_parts.append(brand)
+    elif category == "cpu":
+        # chipset (amd/intel) is the most reliable disambiguator since CPU
+        # listings rarely name the AIB; only fall back to detected brand if
+        # chipset extraction failed.
+        if chipset:
+            prefix_parts.append(chipset)
+        elif brand and brand not in ("amd", "intel"):
+            prefix_parts.append(brand)
+    elif category in ("ssd", "ram") and brand:
+        prefix_parts.append(brand)
+        if category in ("ssd", "ram") and capacity_tokens:
+            # capacity is critical for storage/memory — a 1TB vs 2TB SSD are
+            # different SKUs and must not collapse to one row.
+            prefix_parts.append(capacity_tokens[0])
+
+    if prefix_parts and model_name:
+        existing = model_name.lower()
+        new_prefix = " ".join(p for p in prefix_parts if p.lower() not in existing)
+        if new_prefix:
+            model_name = f"{new_prefix} {model_name}".strip()
+
     return NormalizedProduct(
         category=category,
         original_name=name,

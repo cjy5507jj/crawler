@@ -3,6 +3,7 @@ from src.normalization.catalog import (
     detect_chipset,
     extract_category_tokens,
     is_accessory_product,
+    is_category_mismatch,
     is_excluded_listing,
     normalize_product_name,
     tokenize_model,
@@ -193,3 +194,61 @@ def test_extract_category_tokens_monitor() -> None:
     assert "oled" in tokens
     # resolution pair captures (2560, 1440) — first capture stored
     assert any("2560" in t or "1440" in t for t in tokens)
+
+
+def test_is_category_mismatch_blocks_gpu_listing_in_cpu_category() -> None:
+    # GPU listing surfaced under a CPU search — the CPU regex would still
+    # strip "5080" as a SKU, so we have to reject it explicitly.
+    assert is_category_mismatch("cpu", "컬러풀 RTX 5080 불칸 판매합니다")
+
+
+def test_is_category_mismatch_allows_legitimate_cpu_listing() -> None:
+    assert not is_category_mismatch("cpu", "AMD 라이젠 5 7600 정품 박스")
+    assert not is_category_mismatch("cpu", "인텔 코어 i7-14700K 미개봉")
+
+
+def test_is_category_mismatch_allows_mainboard_mentioning_cpu_sku() -> None:
+    # Mainboard listing that names a compatible CPU SKU — keep it for the
+    # mainboard category (1 mainboard token vs 1 CPU token => no mismatch).
+    assert not is_category_mismatch("mainboard", "ASUS B650M 7600 호환 보드")
+
+
+def test_is_category_mismatch_allows_unknown_listing() -> None:
+    # No category patterns match → no signal → don't reject.
+    assert not is_category_mismatch("cpu", "정체 불명 제품 팝니다")
+
+
+def test_is_excluded_listing_rejects_tv_for_monitor_category() -> None:
+    # monitor 카테고리에서 TV listing 은 c2c_used_median 을 왜곡 → reject.
+    assert is_excluded_listing("LG 55인치 4K UHD 스마트TV", category="monitor")
+    assert is_excluded_listing("삼성 65인치 OLED TV 신품", category="monitor")
+    # 다른 카테고리에는 영향 없음.
+    assert not is_excluded_listing("LG 55인치 4K UHD 스마트TV", category="gpu")
+    # 일반 모니터는 통과.
+    assert not is_excluded_listing("DELL 27인치 QHD IPS 모니터", category="monitor")
+
+
+def test_normalize_psu_with_known_brand() -> None:
+    norm = normalize_product_name("psu", "Corsair RM850x 850W 80+ Gold")
+    # brand=corsair 가 model_name 앞에 prepend 되어야 한다.
+    assert norm.brand == "corsair"
+    assert "corsair" in norm.model_name.lower()
+    # PSU regex 가 잡은 wattage 토큰 ('850') 도 보존.
+    assert "850" in norm.model_name
+
+
+def test_normalize_cpu_prepends_chipset() -> None:
+    norm = normalize_product_name("cpu", "AMD 라이젠5 5600 정품 박스")
+    # chipset=amd 가 model_name 앞에 prepend → "amd 5600" 형태.
+    assert norm.chipset == "amd"
+    assert norm.model_name.lower().startswith("amd")
+    assert "5600" in norm.model_name
+
+
+def test_normalize_ssd_prepends_brand_and_capacity() -> None:
+    norm = normalize_product_name("ssd", "삼성 990 PRO 1TB M.2 NVMe")
+    # brand=samsung + capacity '1tb' 가 model_name 에 결합.
+    assert norm.brand == "samsung"
+    lowered = norm.model_name.lower()
+    assert "samsung" in lowered
+    assert "1tb" in lowered

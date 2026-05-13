@@ -19,6 +19,7 @@ from src.domains.consumer.normalization import normalize_consumer_product
 from src.normalization.catalog import (
     detect_brand,
     is_accessory_product,
+    is_category_mismatch,
     is_excluded_listing,
     normalize_product_name,
 )
@@ -452,6 +453,11 @@ def _ensure_pc_candidate(
     # noisy listings such as "RTX 삽니다" or accessory posts.
     if not identity.specs.get("brand") and not identity.specs.get("capacity_tokens"):
         return None
+    # Cross-category contamination guard. Without this, a "RTX 5080 불칸" listing
+    # surfaced under a CPU search would mint a CPU product row keyed off "5080"
+    # and pollute CPU stats with GPU prices. See catalog.is_category_mismatch.
+    if is_category_mismatch(category, listing.title):
+        return None
     for candidate in candidates:
         if getattr(candidate, "canonical_key", None) == identity.canonical_key:
             return candidate
@@ -589,7 +595,7 @@ def run_used(
     matched = pending = unmatched = excluded = saved_snapshots = 0
 
     for listing in listings:
-        if is_excluded_listing(listing.title):
+        if is_excluded_listing(listing.title, category=category):
             excluded += 1
             continue
 

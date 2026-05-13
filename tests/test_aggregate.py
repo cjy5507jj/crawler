@@ -220,6 +220,41 @@ def test_compute_stats_sanity_filter_drops_extreme_high() -> None:
     assert stats.used_max <= 110_000
 
 
+def test_compute_stats_drops_placeholder_prices() -> None:
+    # "99,999원" / "999,999원" 류의 placeholder 가격은 시세 산출에서 제외.
+    snaps = [
+        _Snapshot(price=p, snapshot_at=f"2026-04-{20+i:02d}T00:00:00Z")
+        for i, p in enumerate([140_000, 150_000, 145_000, 99_999, 999_999])
+    ]
+    stats = compute_stats(
+        product_id="p-1",
+        category="cpu",
+        used_snapshots=snaps,
+        new_price=200_000,
+        window_days=30,
+    )
+    assert stats.used_count == 3  # 99_999 & 999_999 dropped
+    assert stats.used_min == 140_000
+    assert stats.used_max == 150_000
+
+
+def test_compute_stats_drops_category_ceiling() -> None:
+    # PSU 카테고리 ceiling 800,000원 — 그 위 가격은 full-PC 묶음 매물로 간주.
+    snaps = [
+        _Snapshot(price=p, snapshot_at=f"2026-04-{20+i:02d}T00:00:00Z")
+        for i, p in enumerate([70_000, 80_000, 90_000, 2_500_000])
+    ]
+    stats = compute_stats(
+        product_id="p-1",
+        category="psu",
+        used_snapshots=snaps,
+        new_price=100_000,
+        window_days=30,
+    )
+    assert stats.used_count == 3
+    assert stats.used_max == 90_000
+
+
 def test_compute_stats_drops_implausible_low_used_price_when_new_price_is_normal() -> None:
     snaps = [
         _Snapshot(price=2_000, snapshot_at="2026-04-26T10:00:00Z"),
